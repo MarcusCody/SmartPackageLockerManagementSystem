@@ -28,7 +28,7 @@ export function CustomerView({ onRetrieve }: CustomerViewProps) {
     setResult(null);
     try {
       const trimmedLockerId = lockerId.trim().toUpperCase();
-      const pickup = await onRetrieve(trimmedLockerId, pickupCode.trim().toUpperCase());
+      const pickup = await onRetrieve(trimmedLockerId, pickupCode.trim());
       setResult({ lockerId: trimmedLockerId, pickup });
     } catch (cause) {
       if (cause instanceof ApiError) {
@@ -59,7 +59,8 @@ export function CustomerView({ onRetrieve }: CustomerViewProps) {
           id="pickup-code"
           value={pickupCode}
           onChange={(event) => setPickupCode(event.target.value)}
-          placeholder="6-character code"
+          placeholder="6-digit PIN"
+          inputMode="numeric"
           autoComplete="off"
           required
         />

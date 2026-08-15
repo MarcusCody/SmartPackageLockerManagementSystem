@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import type { LockerSize, LockerView } from '../api/client';
+import type { AdminLockerView, LockerSize, LockerView } from '../api/client';
 import { ApiError } from '../api/client';
+import { AdminLockerBoard } from '../components/AdminLockerBoard';
 
 interface OperationsViewProps {
-  lockers: LockerView[];
+  lockers: AdminLockerView[];
   onCreate: (size: LockerSize) => Promise<LockerView>;
 }
 
@@ -63,6 +64,9 @@ export function OperationsView({ lockers, onCreate }: OperationsViewProps) {
           {error}
         </p>
       )}
+
+      <h3 className="board-heading">Locker overview</h3>
+      <AdminLockerBoard lockers={lockers} />
     </section>
   );
 }

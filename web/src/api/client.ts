@@ -6,6 +6,13 @@ export interface LockerView {
   available: boolean;
 }
 
+/** Operations-only view — includes the PIN and the charge accrued so far. */
+export interface AdminLockerView extends LockerView {
+  pickupCode: string | null;
+  storedAt: string | null;
+  accruedCharge: number | null;
+}
+
 export interface StoreResult {
   lockerId: string;
   pickupCode: string;
@@ -52,6 +59,11 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   async listLockers(): Promise<LockerView[]> {
     const { lockers } = await requestJson<{ lockers: LockerView[] }>('/api/lockers');
+    return lockers;
+  },
+
+  async adminLockers(): Promise<AdminLockerView[]> {
+    const { lockers } = await requestJson<{ lockers: AdminLockerView[] }>('/api/admin/lockers');
     return lockers;
   },
 
