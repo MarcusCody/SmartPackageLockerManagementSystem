@@ -1,7 +1,12 @@
 import type { LockerSize } from './LockerSize.js';
 import { fits } from './LockerSize.js';
 import type { Package } from './Package.js';
-import { LockerOccupiedError, PackageDoesNotFitError } from './errors.js';
+import {
+  InvalidPickupCodeError,
+  LockerEmptyError,
+  LockerOccupiedError,
+  PackageDoesNotFitError,
+} from './errors.js';
 
 interface StoredPackage {
   readonly pkg: Package;
@@ -42,5 +47,22 @@ export class Locker {
       throw new PackageDoesNotFitError(this.id, pkg.size);
     }
     this.stored = { pkg, pickupCode, storedAt };
+  }
+
+  /**
+   * Opens the locker for the matching pickup code: hands the package
+   * (and when it was stored) back and frees the locker. A used code
+   * cannot be replayed because the locker is empty afterwards.
+   */
+  retrieve(pickupCode: string): { pkg: Package; storedAt: Date } {
+    if (this.stored === null) {
+      throw new LockerEmptyError(this.id);
+    }
+    if (this.stored.pickupCode !== pickupCode) {
+      throw new InvalidPickupCodeError(this.id);
+    }
+    const { pkg, storedAt } = this.stored;
+    this.stored = null;
+    return { pkg, storedAt };
   }
 }
