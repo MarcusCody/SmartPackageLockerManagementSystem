@@ -8,6 +8,7 @@ import {
 import { StorePackageService } from '../../src/application/StorePackageService.js';
 import { RetrievePackageService } from '../../src/application/RetrievePackageService.js';
 import { SmallestSuitableLockerStrategy } from '../../src/application/policies/LockerAllocationStrategy.js';
+import { TieredStorageFeePolicy } from '../../src/application/policies/StorageFeePolicy.js';
 import { InMemoryLockerRepository } from '../../src/infrastructure/InMemoryLockerRepository.js';
 import { FixedClock, SequenceCodeGenerator } from '../helpers/stubs.js';
 
@@ -25,7 +26,11 @@ async function setup(lockers: Locker[] = [new Locker('S-1', 'SMALL')]) {
     new SequenceCodeGenerator(['CODE01', 'CODE02', 'CODE03']),
     clock,
   );
-  const retrieveService = new RetrievePackageService(repository);
+  const retrieveService = new RetrievePackageService(
+    repository,
+    new TieredStorageFeePolicy({ ratePerDay: 10 }),
+    clock,
+  );
   return { repository, storeService, retrieveService, clock };
 }
 
@@ -100,5 +105,46 @@ describe('RetrievePackageService', () => {
     await expect(retrieveService.retrieve(stored.lockerId, stored.pickupCode)).rejects.toThrow(
       LockerEmptyError,
     );
+  });
+
+  describe('storage charges (Level 3)', () => {
+    it('returns the storage charge with the pickup confirmation', async () => {
+      const { storeService, retrieveService, clock } = await setup();
+      const stored = await storeService.store('SMALL');
+
+      clock.advanceHours(2);
+      const result = await retrieveService.retrieve(stored.lockerId, stored.pickupCode);
+
+      expect(result.storageCharge).toBe(10); // day 1 at X = 10
+      expect(result.storedAt).toEqual(NOW);
+      expect(result.retrievedAt).toEqual(clock.now());
+    });
+
+    it('charges for the full duration the package stayed, across tiers', async () => {
+      const { storeService, retrieveService, clock } = await setup();
+      const stored = await storeService.store('SMALL');
+
+      clock.advanceHours(6 * 24); // exactly 6 days: 5 at X + 1 at 2X
+      const result = await retrieveService.retrieve(stored.lockerId, stored.pickupCode);
+
+      expect(result.storageCharge).toBe(70);
+    });
+
+    it('charges each stored package from its own storage time', async () => {
+      const { storeService, retrieveService, clock } = await setup([
+        new Locker('S-1', 'SMALL'),
+        new Locker('S-2', 'SMALL'),
+      ]);
+      const first = await storeService.store('SMALL');
+      clock.advanceHours(3 * 24); // first has been in 3 days when second arrives
+      const second = await storeService.store('SMALL');
+      clock.advanceHours(1);
+
+      const firstResult = await retrieveService.retrieve(first.lockerId, first.pickupCode);
+      const secondResult = await retrieveService.retrieve(second.lockerId, second.pickupCode);
+
+      expect(firstResult.storageCharge).toBe(40); // 4 days at X
+      expect(secondResult.storageCharge).toBe(10); // 1 day at X
+    });
   });
 });
