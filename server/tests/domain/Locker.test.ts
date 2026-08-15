@@ -37,6 +37,15 @@ describe('Locker', () => {
     expect(locker.activePickupCode).toBe('CODE01');
   });
 
+  it('exposes when the current package was stored, and null when empty', () => {
+    const locker = new Locker('S-1', 'SMALL');
+    expect(locker.storedSince).toBeNull();
+
+    locker.store(makePackage(), 'CODE01', NOW);
+
+    expect(locker.storedSince).toEqual(NOW);
+  });
+
   it('holds only one package at a time', () => {
     const locker = new Locker('L-1', 'LARGE');
     locker.store(makePackage(), 'CODE01', NOW);

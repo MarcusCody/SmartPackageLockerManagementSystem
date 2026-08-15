@@ -84,6 +84,39 @@ describe('REST API', () => {
     });
   });
 
+  describe('GET /api/admin/lockers (operations overview)', () => {
+    it('shows PIN, storage time and accrued charge for occupied lockers only', async () => {
+      const { app, clock } = await buildTestApp([
+        new Locker('S-1', 'SMALL'),
+        new Locker('S-2', 'SMALL'),
+      ]);
+      await request(app).post('/api/packages').send({ size: 'SMALL' });
+      clock.advanceHours(25); // day 2 at X=10 → 20 accrued
+
+      const response = await request(app).get('/api/admin/lockers');
+
+      expect(response.status).toBe(200);
+      expect(response.body.lockers).toEqual([
+        {
+          id: 'S-1',
+          size: 'SMALL',
+          available: false,
+          pickupCode: 'CODE01',
+          storedAt: '2026-08-15T10:00:00.000Z',
+          accruedCharge: 20,
+        },
+        {
+          id: 'S-2',
+          size: 'SMALL',
+          available: true,
+          pickupCode: null,
+          storedAt: null,
+          accruedCharge: null,
+        },
+      ]);
+    });
+  });
+
   describe('POST /api/pickups', () => {
     it('opens the locker, returns the package and the storage charge, and frees the locker', async () => {
       const { app, clock } = await buildTestApp([new Locker('S-1', 'SMALL')]);
