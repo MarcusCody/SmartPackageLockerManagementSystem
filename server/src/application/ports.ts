@@ -1,4 +1,6 @@
 import type { Locker } from '../domain/Locker.js';
+import type { Package } from '../domain/Package.js';
+import type { LockerAllocationStrategy } from './policies/LockerAllocationStrategy.js';
 
 /** Time source, injected so time-dependent behaviour is deterministic in tests. */
 export interface Clock {
@@ -21,4 +23,20 @@ export interface LockerRepository {
   add(locker: Locker): Promise<void>;
   findAll(): Promise<Locker[]>;
   findById(id: string): Promise<Locker | undefined>;
+
+  /**
+   * Atomically selects a locker via the strategy and stores the package
+   * in it, so two concurrent requests can never reserve the same locker.
+   * Placing check-and-act behind the repository boundary keeps the
+   * guarantee structural: this is exactly where a database adapter would
+   * use a transaction or optimistic locking.
+   *
+   * @throws NoSuitableLockerError when no available locker fits.
+   */
+  findAndReserve(
+    pkg: Package,
+    pickupCode: string,
+    storedAt: Date,
+    strategy: LockerAllocationStrategy,
+  ): Promise<Locker>;
 }

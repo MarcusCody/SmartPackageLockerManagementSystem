@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Package } from '../domain/Package.js';
 import type { LockerSize } from '../domain/LockerSize.js';
-import { NoSuitableLockerError } from '../domain/errors.js';
 import type { Clock, LockerRepository, PickupCodeGenerator } from './ports.js';
 import type { LockerAllocationStrategy } from './policies/LockerAllocationStrategy.js';
 
@@ -24,15 +23,17 @@ export class StorePackageService {
 
   async store(packageSize: LockerSize): Promise<StorePackageResult> {
     const all = await this.lockers.findAll();
-
-    const locker = this.strategy.select(packageSize, all);
-    if (locker === undefined) {
-      throw new NoSuitableLockerError(packageSize);
-    }
-
-    const pkg: Package = { id: randomUUID(), size: packageSize };
     const pickupCode = this.uniquePickupCode(all);
-    locker.store(pkg, pickupCode, this.clock.now());
+    const pkg: Package = { id: randomUUID(), size: packageSize };
+
+    // Selection + reservation happen atomically inside the repository so
+    // concurrent requests can never be handed the same locker (Level 4).
+    const locker = await this.lockers.findAndReserve(
+      pkg,
+      pickupCode,
+      this.clock.now(),
+      this.strategy,
+    );
 
     return { lockerId: locker.id, pickupCode, packageId: pkg.id };
   }
