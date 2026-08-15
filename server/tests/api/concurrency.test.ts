@@ -46,7 +46,7 @@ describe('Level 4: concurrent storage requests', () => {
     // its own package up with its own code. If a locker were ever handed
     // to two requests at once, one of them would find a different package
     // (or none) behind its code and this pickup would fail.
-    const tasks = Array.from({ length: 120 }, async () => {
+    const task = async () => {
       const stored = await request(app).post('/api/packages').send({ size: 'SMALL' });
       if (stored.status !== 201) {
         expect(stored.status).toBe(409);
@@ -61,9 +61,15 @@ describe('Level 4: concurrent storage requests', () => {
         storedOk: true,
         pickupOk: pickup.status === 200 && pickup.body.package.id === stored.body.packageId,
       };
-    });
+    };
 
-    const results = await Promise.all(tasks);
+    // 120 tasks in concurrent waves of 30 — full contention within each
+    // wave, while keeping the number of simultaneous sockets below OS
+    // limits so the test never flakes on ephemeral-port exhaustion.
+    const results: Awaited<ReturnType<typeof task>>[] = [];
+    for (let wave = 0; wave < 4; wave += 1) {
+      results.push(...(await Promise.all(Array.from({ length: 30 }, task))));
+    }
 
     const storedCount = results.filter((result) => result.storedOk).length;
     expect(storedCount).toBeGreaterThan(0);
