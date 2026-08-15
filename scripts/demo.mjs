@@ -31,6 +31,11 @@ try {
   show('Board now shows that locker occupied', await call('GET', '/api/lockers'));
 
   show(
+    'Operations overview: PIN + accrued storage charge per occupied locker (Level 3 live)',
+    await call('GET', '/api/admin/lockers'),
+  );
+
+  show(
     'Customer: wrong pickup code is rejected, package stays put',
     await call('POST', '/api/pickups', { lockerId: stored.json.lockerId, pickupCode: 'WRONG1' }),
   );

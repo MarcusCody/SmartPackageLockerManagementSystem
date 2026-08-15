@@ -3,8 +3,8 @@
 A locker station where **delivery agents store packages** and **customers retrieve them** with a pickup code — built for the Everest Engineering coding challenge (Levels 1–4, including the optional concurrency level).
 
 - **Server:** TypeScript (strict), Node 20, Express 5, zod — domain-driven, dependency-injected, in-memory storage behind a repository port
-- **UI:** React 19 + Vite — a thin client with three role tabs (Delivery Agent, Customer, Operations) over the REST API
-- **Tests:** Vitest — 70 tests: domain and application units, supertest API integration, concurrency race/stress tests, and React Testing Library flows
+- **UI:** React 19 + Vite + react-router — a thin client with a route per role (`/delivery`, `/customer`, `/operation`) over the REST API
+- **Tests:** Vitest — 79 tests: domain and application units, supertest API integration, concurrency race/stress tests, and React Testing Library flows
 
 ## Quick start
 
@@ -33,7 +33,7 @@ Configuration (env vars, all optional): `PORT` (3000), `STORAGE_RATE_PER_DAY` (1
 
 ## How it works
 
-Delivery agent stores a package → the system assigns the **smallest available locker that fits** and returns the locker id + a unique 6-character pickup code (assumed to reach the customer via SMS/email, out of scope). Customer enters locker id + code → the locker opens, the package is released, the **storage charge** for the time it sat there is returned, and the locker becomes available again.
+Delivery agent stores a package → the system assigns the **smallest available locker that fits** and returns the locker id + a unique 6-digit pickup PIN (assumed to reach the customer via SMS/email, out of scope). Customer enters locker id + PIN → the locker opens, the package is released, the **storage charge** for the time it sat there is returned, and the locker becomes available again.
 
 ## Architecture
 
@@ -85,6 +85,7 @@ There is deliberately **no DI container and no ORM** — constructor injection a
 | -------------------- | -------------------------- | -------------------------------------------------------------- | ------------------------------------------ |
 | `GET /api/lockers`   | —                          | `200 {lockers: [{id, size, available}]}`                        | —                                          |
 | `POST /api/lockers`  | `{size}`                   | `201 {locker}`                                                  | `400` invalid size                         |
+| `GET /api/admin/lockers` | —                      | `200` — adds `pickupCode`, `storedAt`, `accruedCharge` per occupied locker | — (internal: would sit behind operator auth in production) |
 | `POST /api/packages` | `{size}`                   | `201 {lockerId, pickupCode, packageId}`                         | `400` invalid size · `409` no suitable locker |
 | `POST /api/pickups`  | `{lockerId, pickupCode}`   | `200 {opened, package, storedAt, retrievedAt, storageCharge}`   | `400` missing fields · `404` unknown locker · `422` wrong code / empty locker |
 
@@ -92,19 +93,21 @@ All errors share one shape: `{"error": {"code": "NO_SUITABLE_LOCKER", "message":
 
 ## UI
 
-Three role tabs (no authentication — roles are presentation-level, see assumptions):
+One route per role (no authentication — roles are presentation-level, see assumptions):
 
-- **Delivery Agent** — choose a package size, store it, get the locker id + pickup code with a copy button.
-- **Customer** — enter locker id + pickup code; on success the locker opens and the storage charge is shown; failures get friendly, specific copy.
-- **Operations** (internal) — add lockers, see capacity counts. Locker creation belongs to the station operator, not the delivery agent, so it lives here.
+- **`/delivery`** — choose a package size, store it, get the locker id + pickup PIN with a copy button. Shows the availability board so the agent can see capacity.
+- **`/customer`** — enter locker id + 6-digit PIN; on success the locker opens and the storage charge is shown; failures get friendly, specific copy. **No locker board here** — which lockers exist or are occupied is not the customer's business.
+- **`/operation`** (internal) — add lockers, see capacity counts, and a full locker overview where each occupied locker shows its **pickup PIN, storage time and the charge accrued so far**. Locker creation belongs to the station operator, not the delivery agent, so it lives here.
 
-Every view shows the live **locker board** (id, size, available/occupied). Accessibility: labelled controls, keyboard-operable forms, `role=tablist`, `alert`/`status` live regions, visible focus outlines.
+Accessibility: labelled controls, keyboard-operable forms, `alert`/`status` live regions, visible focus outlines.
 
 ## Storage charges (Level 3)
 
 The spec's example: X units/day for days 1–5, 2X for days 6–10, 3X from day 11, where **a day is each started 24-hour window from the moment of storage**. So a package retrieved after 2 hours is in day 1 and owes X; after exactly 24h it still owes X; at 24h + 1s it enters day 2.
 
 Interpretation note: the phrase "packages are expected to be picked up within a reasonable time" *could* be read as a grace period before charging starts. The example ("X/day for the **first** 5 days") reads more literally as day 1 being charged, so the default is `freeDays: 0` — but the grace reading is a one-line config change on `TieredStorageFeePolicy`, and both are covered by tests.
+
+The charge is visible in two places: the customer sees the final amount with the pickup confirmation, and `/operation` shows each occupied locker's **live accrued charge** (what the customer would owe if they picked up right now), computed by the same fee policy.
 
 ## Concurrency (Level 4)
 
@@ -134,7 +137,7 @@ Reservation is **atomic at the repository boundary**: `findAndReserve` selects a
 ## Assumptions
 
 1. **Fee day counting** — `ceil(elapsed / 24h)`, minimum 1 day, day 1 charged (see Level 3 section; grace period configurable).
-2. **Pickup codes** — 6 characters from an ambiguity-free alphabet (no 0/O/1/I); unique among *active* packages; uniqueness enforced with a bounded retry against active codes. In a multi-instance deployment this becomes a DB unique constraint.
+2. **Pickup codes** — keypad-friendly 6-digit numeric PINs (leading zeros preserved); unique among *active* packages, enforced with a bounded retry against active codes. In a multi-instance deployment this becomes a DB unique constraint.
 3. **Package size is a category** (S/M/L) matching locker sizes, not physical dimensions.
 4. **Storage is in-memory** per the challenge scope; state resets on restart.
 5. **No authentication** — the spec defines roles but no auth requirements; tabs model the roles at the presentation level.
@@ -143,7 +146,7 @@ Reservation is **atomic at the repository boundary**: `findAndReserve` selects a
 ## Trade-offs & what I'd do with more time
 
 - **Persistence** — a PostgreSQL adapter for `LockerRepository` (transactional `findAndReserve`, unique index on active pickup codes), enabling multi-instance deployment.
-- **Pickup-code security** — codes are not hashed at rest and there's no rate limiting on pickup attempts; both matter in production.
+- **Pickup-PIN security** — PINs are not hashed at rest, pickup attempts are not rate-limited, and `GET /api/admin/lockers` is unauthenticated; a 6-digit space makes all three mandatory in production (operator auth, attempt lockout, hashed PINs).
 - **Package metadata** — recipient, tracking id, expiry/return flow for never-collected packages (the fee policy seam makes an expiry policy natural).
 - **UI end-to-end tests** — a Playwright smoke over the three tabs; unit/integration coverage is strong but browser-level coverage is thin by design.
 - **Observability** — structured logging and request tracing instead of the single console error hook.
