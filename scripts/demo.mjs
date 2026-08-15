@@ -1,0 +1,58 @@
+/**
+ * End-to-end walkthrough of the REST API for reviewers who skip the UI.
+ * Start the server first: `npm run dev` (or `npm run build && npm start`),
+ * then run `npm run demo`.
+ */
+const BASE_URL = process.env.BASE_URL ?? 'http://localhost:3000';
+
+async function call(method, path, body) {
+  const response = await fetch(`${BASE_URL}${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const json = await response.json().catch(() => undefined);
+  return { status: response.status, json };
+}
+
+function show(title, result) {
+  console.log(`\n▸ ${title}`);
+  console.log(`  ${result.status} ${JSON.stringify(result.json)}`);
+}
+
+try {
+  show('List lockers (seeded at startup)', await call('GET', '/api/lockers'));
+
+  show('Operations: add a MEDIUM locker', await call('POST', '/api/lockers', { size: 'MEDIUM' }));
+
+  const stored = await call('POST', '/api/packages', { size: 'SMALL' });
+  show('Agent: store a SMALL package (smallest suitable locker wins)', stored);
+
+  show('Board now shows that locker occupied', await call('GET', '/api/lockers'));
+
+  show(
+    'Customer: wrong pickup code is rejected, package stays put',
+    await call('POST', '/api/pickups', { lockerId: stored.json.lockerId, pickupCode: 'WRONG1' }),
+  );
+
+  const pickup = { lockerId: stored.json.lockerId, pickupCode: stored.json.pickupCode };
+  show('Customer: correct code opens the locker and returns the charge', await call('POST', '/api/pickups', pickup));
+
+  show('Replaying the used code fails — the locker is empty again', await call('POST', '/api/pickups', pickup));
+
+  console.log('\n▸ Fill every LARGE-capable locker, then one more store must be refused');
+  let last;
+  do {
+    last = await call('POST', '/api/packages', { size: 'LARGE' });
+    console.log(`  ${last.status} ${JSON.stringify(last.json)}`);
+  } while (last.status === 201);
+
+  console.log('\nDone — locker state is in-memory; restart the server to reset.');
+} catch (error) {
+  console.error(
+    `\nCould not reach the server at ${BASE_URL}.`,
+    'Start it first with `npm run dev` (UI + API) or `npm run build && npm start`.',
+  );
+  console.error(String(error));
+  process.exit(1);
+}

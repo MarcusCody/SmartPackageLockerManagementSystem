@@ -1,0 +1,28 @@
+# Optional: deploy to Azure App Service (Linux, Node 20).
+# Manually triggered only — requires two repository secrets:
+#   AZURE_WEBAPP_NAME             the App Service name
+#   AZURE_WEBAPP_PUBLISH_PROFILE  the app's publish profile XML
+# Note: run a single instance — locker state is in-memory (see README).
+name: Deploy to Azure
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npm prune --omit=dev
+      - uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: .
