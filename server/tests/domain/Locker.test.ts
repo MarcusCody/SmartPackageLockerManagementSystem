@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { Locker } from '../../src/domain/Locker.js';
 import type { Package } from '../../src/domain/Package.js';
 import type { LockerSize } from '../../src/domain/LockerSize.js';
-import { LockerOccupiedError, PackageDoesNotFitError } from '../../src/domain/errors.js';
+import {
+  InvalidPickupCodeError,
+  LockerEmptyError,
+  LockerOccupiedError,
+  PackageDoesNotFitError,
+} from '../../src/domain/errors.js';
 
 const makePackage = (size: LockerSize = 'SMALL', id = 'pkg-1'): Package => ({ id, size });
 const NOW = new Date('2026-08-15T10:00:00Z');
@@ -48,5 +53,61 @@ describe('Locker', () => {
       PackageDoesNotFitError,
     );
     expect(locker.isAvailable).toBe(true);
+  });
+
+  describe('retrieve', () => {
+    it('returns the stored package and its storage time for the matching pickup code', () => {
+      const locker = new Locker('S-1', 'SMALL');
+      const pkg = makePackage();
+      locker.store(pkg, 'CODE01', NOW);
+
+      const retrieved = locker.retrieve('CODE01');
+
+      expect(retrieved.pkg).toBe(pkg);
+      expect(retrieved.storedAt).toEqual(NOW);
+    });
+
+    it('becomes available again after retrieval', () => {
+      const locker = new Locker('S-1', 'SMALL');
+      locker.store(makePackage(), 'CODE01', NOW);
+
+      locker.retrieve('CODE01');
+
+      expect(locker.isAvailable).toBe(true);
+      expect(locker.activePickupCode).toBeNull();
+    });
+
+    it('can store a new package after the previous one was retrieved', () => {
+      const locker = new Locker('S-1', 'SMALL');
+      locker.store(makePackage('SMALL', 'pkg-1'), 'CODE01', NOW);
+      locker.retrieve('CODE01');
+
+      locker.store(makePackage('SMALL', 'pkg-2'), 'CODE02', NOW);
+
+      expect(locker.isAvailable).toBe(false);
+      expect(locker.activePickupCode).toBe('CODE02');
+    });
+
+    it('rejects a wrong pickup code and keeps the package', () => {
+      const locker = new Locker('S-1', 'SMALL');
+      locker.store(makePackage(), 'CODE01', NOW);
+
+      expect(() => locker.retrieve('WRONG1')).toThrow(InvalidPickupCodeError);
+      expect(locker.isAvailable).toBe(false);
+    });
+
+    it('rejects retrieval from an empty locker', () => {
+      const locker = new Locker('S-1', 'SMALL');
+
+      expect(() => locker.retrieve('CODE01')).toThrow(LockerEmptyError);
+    });
+
+    it('rejects a pickup code that was already used', () => {
+      const locker = new Locker('S-1', 'SMALL');
+      locker.store(makePackage(), 'CODE01', NOW);
+      locker.retrieve('CODE01');
+
+      expect(() => locker.retrieve('CODE01')).toThrow(LockerEmptyError);
+    });
   });
 });
