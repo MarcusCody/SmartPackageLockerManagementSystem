@@ -1,0 +1,74 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { isLockerSize } from './domain/LockerSize.js';
+import type { LockerSize } from './domain/LockerSize.js';
+import { LockerFactory } from './application/LockerFactory.js';
+import { StorePackageService } from './application/StorePackageService.js';
+import { RetrievePackageService } from './application/RetrievePackageService.js';
+import { SmallestSuitableLockerStrategy } from './application/policies/LockerAllocationStrategy.js';
+import { TieredStorageFeePolicy } from './application/policies/StorageFeePolicy.js';
+import { InMemoryLockerRepository } from './infrastructure/InMemoryLockerRepository.js';
+import { RandomPickupCodeGenerator } from './infrastructure/RandomPickupCodeGenerator.js';
+import { SystemClock } from './infrastructure/SystemClock.js';
+import { createApp } from './api/server.js';
+
+const PORT = Number(process.env.PORT ?? 3000);
+const RATE_PER_DAY = Number(process.env.STORAGE_RATE_PER_DAY ?? 10);
+// Lockers available at startup so the station works out of the box.
+const SEED = process.env.SEED_LOCKERS ?? 'SMALL:3,MEDIUM:3,LARGE:2';
+
+function parseSeed(seed: string): Array<{ size: LockerSize; count: number }> {
+  return seed
+    .split(',')
+    .filter((entry) => entry.trim() !== '')
+    .map((entry) => {
+      const [size, countRaw] = entry.split(':').map((part) => part.trim());
+      const count = Number(countRaw);
+      if (size === undefined || !isLockerSize(size) || !Number.isInteger(count) || count < 0) {
+        throw new Error(`Invalid SEED_LOCKERS entry: "${entry}" (expected e.g. "SMALL:3")`);
+      }
+      return { size, count };
+    });
+}
+
+async function main(): Promise<void> {
+  const repository = new InMemoryLockerRepository();
+  const factory = new LockerFactory();
+
+  for (const { size, count } of parseSeed(SEED)) {
+    for (let i = 0; i < count; i += 1) {
+      await repository.add(factory.create(size));
+    }
+  }
+
+  const clock = new SystemClock();
+  const app = createApp(
+    {
+      lockerRepository: repository,
+      lockerFactory: factory,
+      storePackageService: new StorePackageService(
+        repository,
+        new SmallestSuitableLockerStrategy(),
+        new RandomPickupCodeGenerator(),
+        clock,
+      ),
+      retrievePackageService: new RetrievePackageService(
+        repository,
+        new TieredStorageFeePolicy({ ratePerDay: RATE_PER_DAY }),
+        clock,
+      ),
+    },
+    {
+      webDistPath: path.resolve(fileURLToPath(import.meta.url), '../../../web/dist'),
+    },
+  );
+
+  app.listen(PORT, () => {
+    console.log(`Smart Package Locker server listening on http://localhost:${PORT}`);
+  });
+}
+
+main().catch((error) => {
+  console.error('Failed to start server', error);
+  process.exit(1);
+});
