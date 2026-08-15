@@ -5,6 +5,7 @@ import type { LockerSize } from './domain/LockerSize.js';
 import { LockerFactory } from './application/LockerFactory.js';
 import { StorePackageService } from './application/StorePackageService.js';
 import { RetrievePackageService } from './application/RetrievePackageService.js';
+import { LockerOverviewService } from './application/LockerOverviewService.js';
 import { SmallestSuitableLockerStrategy } from './application/policies/LockerAllocationStrategy.js';
 import { TieredStorageFeePolicy } from './application/policies/StorageFeePolicy.js';
 import { InMemoryLockerRepository } from './infrastructure/InMemoryLockerRepository.js';
@@ -42,6 +43,7 @@ async function main(): Promise<void> {
   }
 
   const clock = new SystemClock();
+  const feePolicy = new TieredStorageFeePolicy({ ratePerDay: RATE_PER_DAY });
   const app = createApp(
     {
       lockerRepository: repository,
@@ -52,11 +54,8 @@ async function main(): Promise<void> {
         new RandomPickupCodeGenerator(),
         clock,
       ),
-      retrievePackageService: new RetrievePackageService(
-        repository,
-        new TieredStorageFeePolicy({ ratePerDay: RATE_PER_DAY }),
-        clock,
-      ),
+      retrievePackageService: new RetrievePackageService(repository, feePolicy, clock),
+      lockerOverviewService: new LockerOverviewService(repository, feePolicy, clock),
     },
     {
       webDistPath: path.resolve(fileURLToPath(import.meta.url), '../../../web/dist'),

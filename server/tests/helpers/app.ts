@@ -1,6 +1,7 @@
 import type { Locker } from '../../src/domain/Locker.js';
 import { StorePackageService } from '../../src/application/StorePackageService.js';
 import { RetrievePackageService } from '../../src/application/RetrievePackageService.js';
+import { LockerOverviewService } from '../../src/application/LockerOverviewService.js';
 import { LockerFactory } from '../../src/application/LockerFactory.js';
 import { SmallestSuitableLockerStrategy } from '../../src/application/policies/LockerAllocationStrategy.js';
 import { TieredStorageFeePolicy } from '../../src/application/policies/StorageFeePolicy.js';
@@ -20,6 +21,7 @@ export async function buildTestApp(
     await repository.add(locker);
   }
   const clock = new FixedClock(TEST_NOW);
+  const feePolicy = new TieredStorageFeePolicy({ ratePerDay: 10 });
   const app = createApp({
     lockerRepository: repository,
     lockerFactory: new LockerFactory(),
@@ -29,11 +31,8 @@ export async function buildTestApp(
       new SequenceCodeGenerator(codes),
       clock,
     ),
-    retrievePackageService: new RetrievePackageService(
-      repository,
-      new TieredStorageFeePolicy({ ratePerDay: 10 }),
-      clock,
-    ),
+    retrievePackageService: new RetrievePackageService(repository, feePolicy, clock),
+    lockerOverviewService: new LockerOverviewService(repository, feePolicy, clock),
   });
   return { app, clock, repository };
 }

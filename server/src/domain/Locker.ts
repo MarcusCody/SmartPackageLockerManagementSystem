@@ -35,6 +35,11 @@ export class Locker {
     return this.stored?.pickupCode ?? null;
   }
 
+  /** When the current package was stored, if any. */
+  get storedSince(): Date | null {
+    return this.stored?.storedAt ?? null;
+  }
+
   canAccommodate(packageSize: LockerSize): boolean {
     return fits(this.size, packageSize);
   }

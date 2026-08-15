@@ -6,6 +6,7 @@ import type { LockerRepository } from '../application/ports.js';
 import type { LockerFactory } from '../application/LockerFactory.js';
 import type { StorePackageService } from '../application/StorePackageService.js';
 import type { RetrievePackageService } from '../application/RetrievePackageService.js';
+import type { LockerOverviewService } from '../application/LockerOverviewService.js';
 
 const createLockerSchema = z.object({ size: z.enum(LOCKER_SIZES) });
 const storePackageSchema = z.object({ size: z.enum(LOCKER_SIZES) });
@@ -25,6 +26,7 @@ export interface ApiDependencies {
   lockerFactory: LockerFactory;
   storePackageService: StorePackageService;
   retrievePackageService: RetrievePackageService;
+  lockerOverviewService: LockerOverviewService;
 }
 
 export function apiRoutes(deps: ApiDependencies): Router {
@@ -40,6 +42,17 @@ export function apiRoutes(deps: ApiDependencies): Router {
     const locker = deps.lockerFactory.create(size);
     await deps.lockerRepository.add(locker);
     res.status(201).json({ locker: toLockerView(locker) });
+  });
+
+  // Internal operations endpoint — would sit behind operator auth in production.
+  router.get('/admin/lockers', async (_req, res) => {
+    const overview = await deps.lockerOverviewService.overview();
+    res.json({
+      lockers: overview.map((locker) => ({
+        ...locker,
+        storedAt: locker.storedAt?.toISOString() ?? null,
+      })),
+    });
   });
 
   router.post('/packages', async (req, res) => {

@@ -1,16 +1,13 @@
 import { randomInt } from 'node:crypto';
 import type { PickupCodeGenerator } from '../application/ports.js';
 
-// No 0/O or 1/I — customers read these codes off a phone screen.
-const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const CODE_LENGTH = 6;
+const PIN_LENGTH = 6;
 
+/** Keypad-friendly 6-digit numeric PIN (leading zeros preserved). */
 export class RandomPickupCodeGenerator implements PickupCodeGenerator {
   generate(): string {
-    let code = '';
-    for (let i = 0; i < CODE_LENGTH; i += 1) {
-      code += ALPHABET[randomInt(ALPHABET.length)];
-    }
-    return code;
+    return randomInt(0, 10 ** PIN_LENGTH)
+      .toString()
+      .padStart(PIN_LENGTH, '0');
   }
 }
