@@ -17,6 +17,8 @@ export interface StoreResult {
   lockerId: string;
   pickupCode: string;
   packageId: string;
+  /** Whether the PIN was emailed: sent, failed (share manually), or none (no email given). */
+  notification: 'sent' | 'failed' | 'none';
 }
 
 export interface PickupResult {
@@ -77,10 +79,12 @@ export const api = {
     return locker;
   },
 
-  storePackage(size: LockerSize): Promise<StoreResult> {
+  storePackage(size: LockerSize, customerEmail?: string): Promise<StoreResult> {
     return requestJson<StoreResult>('/api/packages', {
       method: 'POST',
-      body: JSON.stringify({ size }),
+      body: JSON.stringify(
+        customerEmail === undefined ? { size } : { size, customerEmail },
+      ),
     });
   },
 

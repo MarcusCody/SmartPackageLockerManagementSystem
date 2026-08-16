@@ -20,9 +20,9 @@ export function DeliveryPage() {
     };
   }, []);
 
-  const storePackage = useCallback(async (size: LockerSize) => {
+  const storePackage = useCallback(async (size: LockerSize, customerEmail?: string) => {
     try {
-      return await api.storePackage(size);
+      return await api.storePackage(size, customerEmail);
     } finally {
       setLockers(await api.listLockers());
     }
