@@ -4,7 +4,7 @@ A locker station where **delivery agents store packages** and **customers retrie
 
 - **Server:** TypeScript (strict), Node 20, Express 5, zod — domain-driven, dependency-injected, in-memory storage behind a repository port
 - **UI:** React 19 + Vite + react-router — a thin client with a route per role (`/delivery`, `/customer`, `/operation`) over the REST API
-- **Tests:** Vitest — 115 tests: domain and application units, supertest API integration, concurrency race/stress tests, and React Testing Library flows
+- **Tests:** Vitest — 140 tests: domain and application units, supertest API integration, concurrency race/stress tests, and React Testing Library flows
 
 ## Quick start
 
@@ -29,11 +29,15 @@ npm run demo           # scripted API walkthrough (server must be running)
 npm run lint           # ESLint over both workspaces
 ```
 
-Configuration: `PORT` (3000) and `SEED_LOCKERS` (`SMALL:3,MEDIUM:3,LARGE:2`) via env vars; the storage fee schedule is configured at the composition root ([server/src/index.ts](server/src/index.ts)). For real email, set `ACS_CONNECTION_STRING` and `EMAIL_SENDER_ADDRESS` (see **Email notifications**) — without them, emails render to the server console.
+Configuration: `PORT` (3000), `SEED_LOCKERS` (`SMALL:3,MEDIUM:3,LARGE:2`) and `RETURN_AFTER_DAYS` (15 — set `0` to demo warehouse returns instantly) via env vars; the storage fee schedule is configured at the composition root ([server/src/index.ts](server/src/index.ts)). For real email, set `ACS_CONNECTION_STRING` and `EMAIL_SENDER_ADDRESS` (see **Email notifications**) — without them, emails render to the server console.
 
 ## How it works
 
-**Orders** arrive from the e-commerce platform with the customer's name, email and phone attached — the delivery agent picks a pending order to store, never typing contact details. The system assigns the **smallest available locker that fits** the order's package, generates a unique 6-digit pickup PIN, and **emails it to the order's contact**. Customer enters the PIN → the system finds and opens the right locker (PINs are unique among active packages, so the locker id is optional — when provided, the pair is validated), the package is released, the **storage charge** is returned, and the locker becomes available again.
+**Orders** arrive from the e-commerce platform with the customer's name, email and phone attached, and follow a lifecycle:
+
+`AWAITING_DISPATCH` → (operations dispatches to the station) → `PENDING` → (agent stores the package) → `STORED` → (customer collects, or the package goes overdue and is) → `RETURNED`
+
+The delivery agent picks a pending order to store — never typing contact details. The system assigns the **smallest available locker that fits**, generates a unique 6-digit pickup PIN, and **emails it to the order's contact**. Customer enters the PIN → the system finds and opens the right locker (locker id optional; validated as a pair when provided), the package is released, the **storage charge** is returned, and the locker frees up. Packages that sit past the **return threshold (15 days)** appear in the agent's overdue list and can be returned to the warehouse, freeing the locker and killing the PIN.
 
 ## Architecture
 
@@ -96,9 +100,12 @@ There is deliberately **no DI container and no ORM** — constructor injection a
 | `GET /api/lockers`   | —                          | `200 {lockers: [{id, size, available}]}`                        | —                                          |
 | `POST /api/lockers`  | `{size}`                   | `201 {locker}`                                                  | `400` invalid size                         |
 | `GET /api/admin/lockers` | —                      | `200` — adds `pickupCode`, `storedAt`, `accruedCharge` per occupied locker | — (internal: would sit behind operator auth in production) |
-| `GET /api/orders`    | —                          | `200 {orders}` — the pending delivery queue                     | —                                          |
-| `POST /api/orders`   | `{customerName, customerEmail, customerPhone, size}` | `201 {order}` — simulates the upstream platform | `400` validation                |
-| `POST /api/orders/:id/store` | —                  | `201 {lockerId, pickupCode, packageId, notification, order}`    | `404` unknown order · `409` already stored / no suitable locker |
+| `GET /api/orders`    | `?status=pending` (default) or `awaiting-dispatch` | `200 {orders}`                          | —                                          |
+| `POST /api/orders`   | `{customerName, customerEmail, customerPhone, size}` | `201 {order}` — the upstream platform registers a delivery (awaiting dispatch) | `400` validation |
+| `POST /api/orders/:id/dispatch` | —               | `200 {order}` — joins the agent's pending queue                 | `404` unknown · `409` already dispatched   |
+| `POST /api/orders/:id/store` | —                  | `201 {lockerId, pickupCode, packageId, notification, order}`    | `404` unknown · `409` not dispatched / already stored / no suitable locker |
+| `GET /api/returns`   | —                          | `200 {overdue}` — packages past the return threshold            | —                                          |
+| `POST /api/lockers/:id/return` | —                | `200 {returned, lockerId, packageId, orderId}` — staff override, no PIN | `404` unknown locker · `422` empty / not overdue |
 | `POST /api/packages` | `{size, customerEmail?}`   | `201 {lockerId, pickupCode, packageId, notification}`           | `400` invalid size/email · `409` no suitable locker |
 | `POST /api/pickups`  | `{pickupCode, lockerId?}`  | `200 {opened, lockerId, package, storedAt, retrievedAt, storageCharge}` | `400` missing PIN · `404` unknown locker · `422` unmatched/wrong PIN, empty locker |
 
@@ -108,9 +115,9 @@ All errors share one shape: `{"error": {"code": "NO_SUITABLE_LOCKER", "message":
 
 One route per role (no authentication — roles are presentation-level, see assumptions):
 
-- **`/delivery`** — the agent's **pending-order queue**: each order arrives with the customer's name, email and phone, so the agent never types contact details. Storing an order assigns the locker, emails the PIN, and confirms who was notified (with a copy button for the PIN). Shows the availability board so the agent can see capacity.
+- **`/delivery`** — the agent's **pending-order queue**: each order arrives with the customer's name, email and phone, so the agent never types contact details. Storing an order assigns the locker, emails the PIN, and confirms who was notified (with a copy button for the PIN). Below it, the **overdue list**: packages past the return threshold show their days-in-locker and go back to the warehouse with one click. Shows the availability board so the agent can see capacity.
 - **`/customer`** — enter the 6-digit PIN (locker id optional); the system opens the right locker, names it, and shows the storage charge; failures get friendly, specific copy. **No locker board here** — which lockers exist or are occupied is not the customer's business.
-- **`/operation`** (internal) — add lockers, **register incoming orders** (simulating the e-commerce platform), see capacity counts, a **station wall preview** (cabinet columns of doors sized by locker size, occupied doors showing a parcel), and the locker overview where each occupied locker shows its **pickup PIN, storage time and the charge accrued so far**. Locker creation belongs to the station operator, not the delivery agent, so it lives here.
+- **`/operation`** (internal) — add lockers, **dispatch incoming platform orders** to the station (nobody types customer data — orders arrive from the platform with contact details attached), see capacity counts, a **station wall preview** (cabinet columns of doors sized by locker size, occupied doors showing a parcel), and the locker overview where each occupied locker shows its **pickup PIN, storage time and the charge accrued so far**.
 
 Accessibility: labelled controls, keyboard-operable forms, `alert`/`status` live regions, visible focus outlines.
 
@@ -135,6 +142,12 @@ The charge is visible in two places: the customer sees the final amount with the
 Reservation is **atomic at the repository boundary**: `findAndReserve` selects and stores in one synchronous critical section, so two concurrent requests can never be handed the same locker, and excess requests get the "no suitable locker" message. This is verified by a race test (10 simultaneous stores against 4 lockers → exactly 4 distinct assignments) and a stress test (120 interleaved store+pickup tasks → every package only ever behind its own code, station fully free at the end).
 
 **Honest scope:** this guarantee holds within one Node process, which is also why the app must run as a single instance while storage is in-memory. Scaling out would fork the locker state — the fix is a database adapter for `LockerRepository` using a transaction / unique constraint / optimistic locking, which is exactly the seam `findAndReserve` marks.
+
+## Warehouse returns (overdue packages)
+
+Packages are expected to be collected; ones that sit past **`RETURN_AFTER_DAYS` (default 15)** become *overdue* — the delivery agent sees them on `/delivery` with their days-in-locker and returns them to the warehouse. The return is a **staff override** (`Locker.removeForReturn` — no PIN required): the locker frees up, the old PIN dies with it, and the linked order is marked `RETURNED`. Walk-in packages stored without an order return too (`orderId: null`). Overdue uses the same started-24h-window day counting as the fees, boundary-tested at exactly 15 days.
+
+Demo tip: start the server with `RETURN_AFTER_DAYS=0` and every stored package is immediately returnable. Future work: notify the customer of the return through the same `PickupNotifier` port.
 
 ## Email notifications
 
@@ -190,7 +203,7 @@ EMAIL_SENDER_ADDRESS="DoNotReply@<guid>.azurecomm.net"
 4. **Storage is in-memory** per the challenge scope; state resets on restart.
 5. **No authentication** — the spec defines roles but no auth requirements; tabs model the roles at the presentation level.
 6. **Notification of the pickup code** is out of scope per the spec, but implemented as a bonus: email via ACS when configured, console otherwise (see **Email notifications**).
-7. **Orders** model the upstream e-commerce platform: they arrive with the customer contact attached (name, email, phone), which is why the delivery agent never types contact details. `POST /api/orders` and the Operations form stand in for that platform integration; `POST /api/packages` remains as the spec's direct store-by-size flow.
+7. **Orders** model the upstream e-commerce platform and follow `AWAITING_DISPATCH → PENDING → STORED → RETURNED`: the platform registers them with the customer contact attached (`POST /api/orders` stands in for that integration), operations dispatches them to the station, the agent stores them — never typing contact details. `POST /api/packages` remains as the spec's direct store-by-size flow.
 
 ## Trade-offs & what I'd do with more time
 

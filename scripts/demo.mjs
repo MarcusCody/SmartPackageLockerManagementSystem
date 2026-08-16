@@ -25,7 +25,17 @@ try {
 
   show('Operations: add a MEDIUM locker', await call('POST', '/api/lockers', { size: 'MEDIUM' }));
 
-  show('Agent: the pending-order queue (seeded from the platform)', await call('GET', '/api/orders'));
+  show(
+    'Platform outbox: orders awaiting dispatch to this station',
+    await call('GET', '/api/orders?status=awaiting-dispatch'),
+  );
+
+  show(
+    'Operations: dispatch ORD-1004 to this station',
+    await call('POST', '/api/orders/ORD-1004/dispatch'),
+  );
+
+  show('Agent: the pending-order queue (3 seeded + the one just dispatched)', await call('GET', '/api/orders'));
 
   show(
     "Agent: store order ORD-1001 — locker assigned by the order's size, PIN emailed to its contact",
@@ -68,7 +78,11 @@ try {
     console.log(`  ${last.status} ${JSON.stringify(last.json)}`);
   } while (last.status === 201);
 
-  console.log('\nDone — locker state is in-memory; restart the server to reset.');
+  console.log(
+    '\nDone — locker state is in-memory; restart the server to reset.',
+    '\nTip: run the server with RETURN_AFTER_DAYS=0 to demo warehouse returns instantly',
+    '(GET /api/returns, then POST /api/lockers/<id>/return).',
+  );
 } catch (error) {
   console.error(
     `\nCould not reach the server at ${BASE_URL}.`,
