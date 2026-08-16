@@ -26,7 +26,7 @@ describe('OperationsView', () => {
     render(<OperationsView lockers={lockers} onCreate={vi.fn()} />);
 
     expect(screen.getByText('042731')).toBeInTheDocument();
-    expect(screen.getByText(/20 units/i)).toBeInTheDocument();
+    expect(screen.getByText(/accrued rm20/i)).toBeInTheDocument();
   });
 
   it('shows no PIN on available lockers and summarises capacity', () => {
