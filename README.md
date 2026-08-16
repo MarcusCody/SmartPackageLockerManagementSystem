@@ -201,6 +201,8 @@ EMAIL_SENDER_ADDRESS="DoNotReply@<guid>.azurecomm.net"
 3. Copy the connection string (Communication Services → Keys) and the MailFrom address (the `DoNotReply@…azurecomm.net` one), and set the two env vars above (on App Service: Configuration → Application settings).
 4. Cost: roughly US$0.00025 per email plus a tiny data fee — negligible against student credit. Managed domains have modest sending limits, fine for a demo.
 
+**Sender identity:** the live deployment sends as `Smart Package Locker <smartlocker@<guid>.azurecomm.net>` — the GUID domain is ACS's free *Azure managed domain* (Microsoft owns the DNS, so SPF/DKIM pass with zero setup). A production system would verify a custom domain (`noreply@yourbrand.com`) with its own SPF/DKIM records; only the friendly display name is configurable on the managed domain.
+
 **Why email and not SMS:** ACS SMS requires acquiring a phone number, which Microsoft does not allow on trial/free-credit subscriptions (including Azure for Students); trial numbers are US-only and calling-only, and Malaysia isn't served by ACS alphanumeric sender IDs. The `PickupNotifier` port is channel-agnostic, so an `SmsNotifier` (e.g. Twilio) plugs in later without touching the domain or services.
 
 ## Requirements coverage
