@@ -24,6 +24,8 @@ import { RandomPickupCodeGenerator } from './infrastructure/RandomPickupCodeGene
 import { SystemClock } from './infrastructure/SystemClock.js';
 import { ConsoleNotifier } from './infrastructure/notifications/ConsoleNotifier.js';
 import { AcsEmailNotifier } from './infrastructure/notifications/AcsEmailNotifier.js';
+import { RedirectingNotifier } from './infrastructure/notifications/RedirectingNotifier.js';
+import type { PickupNotifier } from './application/ports.js';
 import { createApp } from './api/server.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -137,7 +139,7 @@ async function main(): Promise<void> {
   const acsConnectionString = process.env.ACS_CONNECTION_STRING;
   const emailSenderAddress = process.env.EMAIL_SENDER_ADDRESS;
   const usingAcs = acsConnectionString !== undefined && emailSenderAddress !== undefined;
-  const notifier = usingAcs
+  let notifier: PickupNotifier = usingAcs
     ? new AcsEmailNotifier(acsConnectionString, emailSenderAddress)
     : new ConsoleNotifier();
   console.log(
@@ -145,6 +147,13 @@ async function main(): Promise<void> {
       ? 'Email notifications: Azure Communication Services'
       : 'Email notifications: console only (set ACS_CONNECTION_STRING and EMAIL_SENDER_ADDRESS to send real email)',
   );
+  // Demo mode: deliver every email to one real inbox instead of the
+  // (sample) customer addresses.
+  const redirectTo = process.env.EMAIL_REDIRECT_ALL_TO;
+  if (redirectTo !== undefined && redirectTo !== '') {
+    notifier = new RedirectingNotifier(notifier, redirectTo);
+    console.log(`Email notifications: redirecting every message to ${redirectTo}`);
+  }
 
   const storePackageService = new StorePackageService(
     repository,
