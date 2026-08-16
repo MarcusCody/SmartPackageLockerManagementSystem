@@ -5,54 +5,84 @@ const STORED_AT = new Date('2026-08-15T10:00:00Z');
 const HOUR = 60 * 60 * 1000;
 const after = (hours: number) => new Date(STORED_AT.getTime() + hours * HOUR);
 
-// X = 10 units/day for days 1-5, 2X for days 6-10, 3X from day 11 — the
-// tiered example from the spec. A day is 24h from the time of storage.
-const policy = new TieredStorageFeePolicy({ ratePerDay: 10 });
+// The deployed schedule: first 5 days free (grace period), RM1/day for
+// days 6-7, RM2/day from day 8. A day is each started 24h window from the
+// moment of storage.
+const DEPLOYED_SCHEDULE = [
+  { upToDay: 5, ratePerDay: 0 },
+  { upToDay: 7, ratePerDay: 1 },
+  { ratePerDay: 2 },
+];
 
-describe('TieredStorageFeePolicy', () => {
-  it('charges one day at X when picked up within the first 24 hours', () => {
-    expect(policy.calculate(STORED_AT, after(1))).toBe(10);
-    expect(policy.calculate(STORED_AT, after(23))).toBe(10);
+describe('TieredStorageFeePolicy — deployed schedule', () => {
+  const policy = new TieredStorageFeePolicy(DEPLOYED_SCHEDULE);
+
+  it('is free within the 5-day grace period', () => {
+    expect(policy.calculate(STORED_AT, STORED_AT)).toBe(0);
+    expect(policy.calculate(STORED_AT, after(2))).toBe(0);
+    expect(policy.calculate(STORED_AT, after(5 * 24))).toBe(0);
   });
 
-  it('charges one day at exactly the 24-hour boundary', () => {
-    expect(policy.calculate(STORED_AT, after(24))).toBe(10);
+  it('charges RM1 per day for days 6 and 7', () => {
+    expect(policy.calculate(STORED_AT, after(5 * 24 + 1))).toBe(1); // day 6
+    expect(policy.calculate(STORED_AT, after(7 * 24))).toBe(2); // through day 7
   });
 
-  it('starts the second day the moment 24 hours have passed', () => {
-    expect(policy.calculate(STORED_AT, after(25))).toBe(20);
-  });
-
-  it('charges X per day through day 5', () => {
-    expect(policy.calculate(STORED_AT, after(5 * 24))).toBe(50);
-  });
-
-  it('charges 2X per day for days 6-10', () => {
-    expect(policy.calculate(STORED_AT, after(5 * 24 + 1))).toBe(50 + 20);
-    expect(policy.calculate(STORED_AT, after(10 * 24))).toBe(50 + 100);
-  });
-
-  it('charges 3X per day from day 11 onward', () => {
-    expect(policy.calculate(STORED_AT, after(10 * 24 + 1))).toBe(150 + 30);
-    expect(policy.calculate(STORED_AT, after(13 * 24))).toBe(150 + 90);
-  });
-
-  it('treats an instant pickup as one day, matching "X/day for the first 5 days"', () => {
-    expect(policy.calculate(STORED_AT, STORED_AT)).toBe(10);
-  });
-
-  it('supports a configurable grace period before charges start', () => {
-    const withGrace = new TieredStorageFeePolicy({ ratePerDay: 10, freeDays: 1 });
-
-    expect(withGrace.calculate(STORED_AT, after(23))).toBe(0);
-    expect(withGrace.calculate(STORED_AT, after(25))).toBe(10);
-    // day 1 free, days 2-5 at X, day 6 at 2X
-    expect(withGrace.calculate(STORED_AT, after(6 * 24))).toBe(40 + 20);
+  it('charges RM2 per day from day 8 onward', () => {
+    expect(policy.calculate(STORED_AT, after(7 * 24 + 1))).toBe(4); // 1+1+2
+    expect(policy.calculate(STORED_AT, after(12 * 24))).toBe(12); // 2 + 5×2
   });
 
   it('rejects a retrieval time before the storage time', () => {
     expect(() => policy.calculate(STORED_AT, after(-1))).toThrow(
       /retrieval time.*before.*storage time/i,
     );
+  });
+});
+
+describe('TieredStorageFeePolicy — the spec example stays one config away', () => {
+  // X=10/day for days 1-5, 2X for days 6-10, 3X beyond: the challenge
+  // PDF's example pricing, expressed with the same band mechanism.
+  const policy = new TieredStorageFeePolicy([
+    { upToDay: 5, ratePerDay: 10 },
+    { upToDay: 10, ratePerDay: 20 },
+    { ratePerDay: 30 },
+  ]);
+
+  it('charges day 1 within the first 24 hours and rolls at each 24h boundary', () => {
+    expect(policy.calculate(STORED_AT, after(1))).toBe(10);
+    expect(policy.calculate(STORED_AT, after(24))).toBe(10);
+    expect(policy.calculate(STORED_AT, after(25))).toBe(20);
+  });
+
+  it('applies the tier boundaries at days 5/6 and 10/11', () => {
+    expect(policy.calculate(STORED_AT, after(5 * 24))).toBe(50);
+    expect(policy.calculate(STORED_AT, after(5 * 24 + 1))).toBe(70);
+    expect(policy.calculate(STORED_AT, after(10 * 24))).toBe(150);
+    expect(policy.calculate(STORED_AT, after(10 * 24 + 1))).toBe(180);
+    expect(policy.calculate(STORED_AT, after(13 * 24))).toBe(240);
+  });
+});
+
+describe('TieredStorageFeePolicy — schedule validation', () => {
+  it('rejects an empty schedule', () => {
+    expect(() => new TieredStorageFeePolicy([])).toThrow(/at least one band/i);
+  });
+
+  it('rejects a schedule whose final band is not open-ended', () => {
+    expect(() => new TieredStorageFeePolicy([{ upToDay: 5, ratePerDay: 1 }])).toThrow(
+      /final.*open-ended/i,
+    );
+  });
+
+  it('rejects bands that are not in ascending day order', () => {
+    expect(
+      () =>
+        new TieredStorageFeePolicy([
+          { upToDay: 7, ratePerDay: 0 },
+          { upToDay: 5, ratePerDay: 1 },
+          { ratePerDay: 2 },
+        ]),
+    ).toThrow(/ascending/i);
   });
 });

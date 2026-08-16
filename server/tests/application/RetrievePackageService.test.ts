@@ -26,9 +26,15 @@ async function setup(lockers: Locker[] = [new Locker('S-1', 'SMALL')]) {
     new SequenceCodeGenerator(['CODE01', 'CODE02', 'CODE03']),
     clock,
   );
+  // The spec-example schedule (10/day days 1-5, 20/day days 6-10, 30/day
+  // beyond) keeps the charge expectations below meaningful.
   const retrieveService = new RetrievePackageService(
     repository,
-    new TieredStorageFeePolicy({ ratePerDay: 10 }),
+    new TieredStorageFeePolicy([
+      { upToDay: 5, ratePerDay: 10 },
+      { upToDay: 10, ratePerDay: 20 },
+      { ratePerDay: 30 },
+    ]),
     clock,
   );
   return { repository, storeService, retrieveService, clock };

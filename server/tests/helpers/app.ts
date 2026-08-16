@@ -21,7 +21,12 @@ export async function buildTestApp(
     await repository.add(locker);
   }
   const clock = new FixedClock(TEST_NOW);
-  const feePolicy = new TieredStorageFeePolicy({ ratePerDay: 10 });
+  // Spec-example schedule so integration tests exercise non-zero charges.
+  const feePolicy = new TieredStorageFeePolicy([
+    { upToDay: 5, ratePerDay: 10 },
+    { upToDay: 10, ratePerDay: 20 },
+    { ratePerDay: 30 },
+  ]);
   const app = createApp({
     lockerRepository: repository,
     lockerFactory: new LockerFactory(),

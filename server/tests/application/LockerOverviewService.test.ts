@@ -15,7 +15,11 @@ async function setup(lockers: Locker[]) {
   const clock = new FixedClock(NOW);
   const service = new LockerOverviewService(
     repository,
-    new TieredStorageFeePolicy({ ratePerDay: 10 }),
+    new TieredStorageFeePolicy([
+      { upToDay: 5, ratePerDay: 10 },
+      { upToDay: 10, ratePerDay: 20 },
+      { ratePerDay: 30 },
+    ]),
     clock,
   );
   return { service, clock };
