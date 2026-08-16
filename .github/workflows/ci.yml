@@ -8,6 +8,23 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: locker
+          POSTGRES_PASSWORD: locker
+          POSTGRES_DB: smartlocker_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U locker"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Runs the Postgres adapter integration suite against the service DB.
+      DATABASE_URL_TEST: postgres://locker:locker@localhost:5432/smartlocker_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

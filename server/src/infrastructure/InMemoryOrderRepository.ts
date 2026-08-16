@@ -11,6 +11,10 @@ export class InMemoryOrderRepository implements OrderRepository {
     this.orders.set(order.id, order);
   }
 
+  async findAll(): Promise<Order[]> {
+    return [...this.orders.values()];
+  }
+
   async findById(id: string): Promise<Order | undefined> {
     return this.orders.get(id);
   }

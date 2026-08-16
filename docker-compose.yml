@@ -1,0 +1,26 @@
+# Local PostgreSQL for development and the adapter integration tests.
+#   docker compose up -d db
+# Then set (see .env.example):
+#   DATABASE_URL=postgres://locker:locker@localhost:5433/smartlocker
+#   DATABASE_URL_TEST=postgres://locker:locker@localhost:5433/smartlocker_test
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: locker
+      POSTGRES_PASSWORD: locker
+      POSTGRES_DB: smartlocker
+    # 5433 on the host to avoid colliding with any local PostgreSQL.
+    ports:
+      - '5433:5432'
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+      - ./scripts/db-init.sql:/docker-entrypoint-initdb.d/01-test-db.sql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U locker -d smartlocker']
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  dbdata:

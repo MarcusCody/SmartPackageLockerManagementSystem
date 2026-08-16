@@ -37,6 +37,7 @@ export interface PickupCodeGenerator {
 /** Persistence seam for delivery orders (the agent's work queue). */
 export interface OrderRepository {
   add(order: Order): Promise<void>;
+  findAll(): Promise<Order[]>;
   findById(id: string): Promise<Order | undefined>;
   findPending(): Promise<Order[]>;
   findAwaitingDispatch(): Promise<Order[]>;

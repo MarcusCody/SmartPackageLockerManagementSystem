@@ -54,6 +54,11 @@ export class Locker {
     return this.stored?.pkg.id ?? null;
   }
 
+  /** The package currently inside, if any — needed to persist occupancy. */
+  get storedPackage(): Package | null {
+    return this.stored?.pkg ?? null;
+  }
+
   canAccommodate(packageSize: LockerSize): boolean {
     return fits(this.size, packageSize);
   }

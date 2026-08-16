@@ -14,8 +14,12 @@ import { RetrievePackageService } from './application/RetrievePackageService.js'
 import { LockerOverviewService } from './application/LockerOverviewService.js';
 import { SmallestSuitableLockerStrategy } from './application/policies/LockerAllocationStrategy.js';
 import { TieredStorageFeePolicy } from './application/policies/StorageFeePolicy.js';
+import type { LockerRepository, OrderRepository } from './application/ports.js';
 import { InMemoryLockerRepository } from './infrastructure/InMemoryLockerRepository.js';
 import { InMemoryOrderRepository } from './infrastructure/InMemoryOrderRepository.js';
+import { createPool, migrate } from './infrastructure/postgres/db.js';
+import { PostgresLockerRepository } from './infrastructure/postgres/PostgresLockerRepository.js';
+import { PostgresOrderRepository } from './infrastructure/postgres/PostgresOrderRepository.js';
 import { RandomPickupCodeGenerator } from './infrastructure/RandomPickupCodeGenerator.js';
 import { SystemClock } from './infrastructure/SystemClock.js';
 import { ConsoleNotifier } from './infrastructure/notifications/ConsoleNotifier.js';
@@ -67,24 +71,61 @@ const SAMPLE_ORDERS = [
 ] as const;
 const DISPATCHED_SEEDS = 3;
 
-async function main(): Promise<void> {
-  const repository = new InMemoryLockerRepository();
-  const factory = new LockerFactory();
+/** Highest numeric suffix among ids like S-3 / ORD-1009, so sequences resume. */
+function maxSuffix(ids: string[]): number {
+  return ids.reduce((max, id) => {
+    const suffix = Number(id.split('-')[1]);
+    return Number.isInteger(suffix) && suffix > max ? suffix : max;
+  }, 0);
+}
 
-  for (const { size, count } of parseSeed(SEED)) {
-    for (let i = 0; i < count; i += 1) {
-      await repository.add(factory.create(size));
+async function buildStorage(): Promise<{
+  repository: LockerRepository;
+  orderRepository: OrderRepository;
+}> {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (databaseUrl === undefined) {
+    console.log('Storage: in-memory (set DATABASE_URL to use PostgreSQL)');
+    return { repository: new InMemoryLockerRepository(), orderRepository: new InMemoryOrderRepository() };
+  }
+  const pool = createPool(databaseUrl);
+  await migrate(pool);
+  console.log('Storage: PostgreSQL');
+  return {
+    repository: new PostgresLockerRepository(pool),
+    orderRepository: new PostgresOrderRepository(pool),
+  };
+}
+
+async function main(): Promise<void> {
+  const { repository, orderRepository } = await buildStorage();
+
+  // Seed only an empty station (first boot / in-memory); on a database
+  // restart the existing rows win and the id sequences resume from them.
+  const existingLockers = await repository.findAll();
+  const factory = new LockerFactory({
+    SMALL: maxSuffix(existingLockers.filter((l) => l.size === 'SMALL').map((l) => l.id)),
+    MEDIUM: maxSuffix(existingLockers.filter((l) => l.size === 'MEDIUM').map((l) => l.id)),
+    LARGE: maxSuffix(existingLockers.filter((l) => l.size === 'LARGE').map((l) => l.id)),
+  });
+  if (existingLockers.length === 0) {
+    for (const { size, count } of parseSeed(SEED)) {
+      for (let i = 0; i < count; i += 1) {
+        await repository.add(factory.create(size));
+      }
     }
   }
 
-  const orderRepository = new InMemoryOrderRepository();
-  const orderFactory = new OrderFactory();
-  for (const [index, sample] of SAMPLE_ORDERS.entries()) {
-    const order = orderFactory.create(sample);
-    if (index < DISPATCHED_SEEDS) {
-      order.dispatch();
+  const existingOrders = await orderRepository.findAll();
+  const orderFactory = new OrderFactory(Math.max(1000, maxSuffix(existingOrders.map((o) => o.id))));
+  if (existingOrders.length === 0) {
+    for (const [index, sample] of SAMPLE_ORDERS.entries()) {
+      const order = orderFactory.create(sample);
+      if (index < DISPATCHED_SEEDS) {
+        order.dispatch();
+      }
+      await orderRepository.add(order);
     }
-    await orderRepository.add(order);
   }
 
   const clock = new SystemClock();
