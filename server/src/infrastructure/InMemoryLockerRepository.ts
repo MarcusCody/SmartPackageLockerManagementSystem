@@ -45,4 +45,8 @@ export class InMemoryLockerRepository implements LockerRepository {
     locker.store(pkg, pickupCode, storedAt);
     return locker;
   }
+
+  async save(_locker: Locker): Promise<void> {
+    // Entities are shared references in memory — mutations are already visible.
+  }
 }

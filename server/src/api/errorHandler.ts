@@ -34,7 +34,6 @@ export function errorHandler(
   _req: Request,
   res: Response,
   // Express identifies error middleware by arity, so `next` must be declared.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _next: NextFunction,
 ): void {
   if (error instanceof ZodError) {

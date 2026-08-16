@@ -8,7 +8,7 @@ import {
   PackageDoesNotFitError,
 } from './errors.js';
 
-interface StoredPackage {
+export interface StoredPackage {
   readonly pkg: Package;
   readonly pickupCode: string;
   readonly storedAt: Date;
@@ -25,6 +25,15 @@ export class Locker {
     readonly id: string,
     readonly size: LockerSize,
   ) {}
+
+  /** Rehydrates a locker from persistence without bypassing invariants. */
+  static restore(id: string, size: LockerSize, stored?: StoredPackage): Locker {
+    const locker = new Locker(id, size);
+    if (stored !== undefined) {
+      locker.store(stored.pkg, stored.pickupCode, stored.storedAt);
+    }
+    return locker;
+  }
 
   get isAvailable(): boolean {
     return this.stored === null;

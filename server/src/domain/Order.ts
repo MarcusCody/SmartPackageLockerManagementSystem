@@ -41,6 +41,19 @@ export class Order {
     this.packageSize = details.packageSize;
   }
 
+  /** Rehydrates an order from persistence without bypassing invariants. */
+  static restore(
+    id: string,
+    details: OrderDetails,
+    status: OrderStatus,
+    packageId: string | null,
+  ): Order {
+    const order = new Order(id, details);
+    order.state = status;
+    order.storedPackageId = packageId;
+    return order;
+  }
+
   get status(): OrderStatus {
     return this.state;
   }

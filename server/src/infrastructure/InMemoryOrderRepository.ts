@@ -26,4 +26,8 @@ export class InMemoryOrderRepository implements OrderRepository {
   async findByPackageId(packageId: string): Promise<Order | undefined> {
     return [...this.orders.values()].find((order) => order.packageId === packageId);
   }
+
+  async save(_order: Order): Promise<void> {
+    // Entities are shared references in memory — mutations are already visible.
+  }
 }

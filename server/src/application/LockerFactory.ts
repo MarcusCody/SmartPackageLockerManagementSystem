@@ -9,7 +9,12 @@ const PREFIX: Record<LockerSize, string> = { SMALL: 'S', MEDIUM: 'M', LARGE: 'L'
  * the locker station.
  */
 export class LockerFactory {
-  private readonly counters: Record<LockerSize, number> = { SMALL: 0, MEDIUM: 0, LARGE: 0 };
+  private readonly counters: Record<LockerSize, number>;
+
+  /** Pass persisted per-size counters to resume the sequences after a restart. */
+  constructor(startFrom: Partial<Record<LockerSize, number>> = {}) {
+    this.counters = { SMALL: 0, MEDIUM: 0, LARGE: 0, ...startFrom };
+  }
 
   create(size: LockerSize): Locker {
     this.counters[size] += 1;

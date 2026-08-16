@@ -15,6 +15,7 @@ export class DispatchOrderService {
       throw new OrderNotFoundError(orderId);
     }
     order.dispatch();
+    await this.orders.save(order);
     return order;
   }
 }

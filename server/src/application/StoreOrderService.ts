@@ -42,6 +42,7 @@ export class StoreOrderService {
 
     const stored = await this.storePackages.store(order.packageSize, order.customerEmail);
     order.markStored(stored.packageId);
+    await this.orders.save(order);
 
     return {
       ...stored,

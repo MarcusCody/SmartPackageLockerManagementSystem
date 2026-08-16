@@ -73,7 +73,11 @@ export class ReturnPackageService {
     const order = await this.orderForLocker(locker);
     // Throws LockerEmptyError when there is nothing to return.
     const { pkg } = locker.removeForReturn();
-    order?.markReturned();
+    await this.lockers.save(locker);
+    if (order !== undefined) {
+      order.markReturned();
+      await this.orders.save(order);
+    }
 
     return { lockerId: locker.id, packageId: pkg.id, orderId: order?.id ?? null };
   }

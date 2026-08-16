@@ -6,7 +6,12 @@ import type { OrderDetails } from '../domain/Order.js';
  * upstream e-commerce platform, which would supply its own ids.
  */
 export class OrderFactory {
-  private sequence = 1000;
+  private sequence: number;
+
+  /** Pass the highest persisted sequence to resume after a restart. */
+  constructor(startFrom = 1000) {
+    this.sequence = startFrom;
+  }
 
   create(details: OrderDetails): Order {
     this.sequence += 1;

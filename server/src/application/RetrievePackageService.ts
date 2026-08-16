@@ -33,6 +33,7 @@ export class RetrievePackageService {
         : await this.lockerById(lockerId);
 
     const { pkg, storedAt } = locker.retrieve(pickupCode);
+    await this.lockers.save(locker);
     const retrievedAt = this.clock.now();
     const storageCharge = this.feePolicy.calculate(storedAt, retrievedAt);
 

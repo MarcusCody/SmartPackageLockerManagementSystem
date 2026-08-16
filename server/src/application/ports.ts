@@ -42,6 +42,8 @@ export interface OrderRepository {
   findAwaitingDispatch(): Promise<Order[]>;
   /** The order whose package was stored under this id, if any. */
   findByPackageId(packageId: string): Promise<Order | undefined>;
+  /** Persist entity state after a domain mutation (no-op for in-memory). */
+  save(order: Order): Promise<void>;
 }
 
 /**
@@ -70,4 +72,7 @@ export interface LockerRepository {
     storedAt: Date,
     strategy: LockerAllocationStrategy,
   ): Promise<Locker>;
+
+  /** Persist entity state after a domain mutation (no-op for in-memory). */
+  save(locker: Locker): Promise<void>;
 }
