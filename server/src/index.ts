@@ -14,9 +14,16 @@ import { SystemClock } from './infrastructure/SystemClock.js';
 import { createApp } from './api/server.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
-const RATE_PER_DAY = Number(process.env.STORAGE_RATE_PER_DAY ?? 10);
 // Lockers available at startup so the station works out of the box.
 const SEED = process.env.SEED_LOCKERS ?? 'SMALL:3,MEDIUM:3,LARGE:2';
+
+// Pricing (amounts in RM): first 5 days free as a grace period, RM1/day
+// for days 6-7, RM2/day from day 8 onward.
+const STORAGE_FEE_SCHEDULE = [
+  { upToDay: 5, ratePerDay: 0 },
+  { upToDay: 7, ratePerDay: 1 },
+  { ratePerDay: 2 },
+];
 
 function parseSeed(seed: string): Array<{ size: LockerSize; count: number }> {
   return seed
@@ -43,7 +50,7 @@ async function main(): Promise<void> {
   }
 
   const clock = new SystemClock();
-  const feePolicy = new TieredStorageFeePolicy({ ratePerDay: RATE_PER_DAY });
+  const feePolicy = new TieredStorageFeePolicy(STORAGE_FEE_SCHEDULE);
   const app = createApp(
     {
       lockerRepository: repository,
