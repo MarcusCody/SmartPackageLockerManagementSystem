@@ -6,5 +6,5 @@ import { CustomerView } from '../views/CustomerView';
  * lockers exist or are occupied is not their business.
  */
 export function CustomerPage() {
-  return <CustomerView onRetrieve={(lockerId, pin) => api.retrievePackage(lockerId, pin)} />;
+  return <CustomerView onRetrieve={(pin, lockerId) => api.retrievePackage(pin, lockerId)} />;
 }

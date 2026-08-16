@@ -21,6 +21,8 @@ export interface StoreResult {
 
 export interface PickupResult {
   opened: boolean;
+  /** Which locker opened — the customer may have collected by PIN alone. */
+  lockerId: string;
   package: { id: string; size: LockerSize };
   storedAt: string;
   retrievedAt: string;
@@ -82,10 +84,10 @@ export const api = {
     });
   },
 
-  retrievePackage(lockerId: string, pickupCode: string): Promise<PickupResult> {
+  retrievePackage(pickupCode: string, lockerId?: string): Promise<PickupResult> {
     return requestJson<PickupResult>('/api/pickups', {
       method: 'POST',
-      body: JSON.stringify({ lockerId, pickupCode }),
+      body: JSON.stringify(lockerId === undefined ? { pickupCode } : { pickupCode, lockerId }),
     });
   },
 };

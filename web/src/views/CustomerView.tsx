@@ -4,20 +4,24 @@ import type { PickupResult } from '../api/client';
 import { ApiError } from '../api/client';
 
 interface CustomerViewProps {
-  onRetrieve: (lockerId: string, pickupCode: string) => Promise<PickupResult>;
+  onRetrieve: (pickupCode: string, lockerId?: string) => Promise<PickupResult>;
 }
 
 const FRIENDLY_ERRORS: Record<string, string> = {
   LOCKER_NOT_FOUND: "We couldn't find that locker. Check the locker ID and try again.",
-  INVALID_PICKUP_CODE: "That pickup code doesn't match this locker. Check the code and try again.",
+  INVALID_PICKUP_CODE: "That pickup code doesn't match any stored package. Check the code and try again.",
   LOCKER_EMPTY: 'This locker is empty. The package may have already been collected.',
 };
 
-/** Customer flow: enter locker id + pickup code, open the locker, see the storage charge. */
+/**
+ * Customer flow: the PIN is enough on its own — PINs are unique per
+ * active package, so the system finds and opens the right locker. The
+ * locker id is optional; when given, it is validated together.
+ */
 export function CustomerView({ onRetrieve }: CustomerViewProps) {
-  const [lockerId, setLockerId] = useState('');
   const [pickupCode, setPickupCode] = useState('');
-  const [result, setResult] = useState<{ lockerId: string; pickup: PickupResult } | null>(null);
+  const [lockerId, setLockerId] = useState('');
+  const [result, setResult] = useState<PickupResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -28,8 +32,11 @@ export function CustomerView({ onRetrieve }: CustomerViewProps) {
     setResult(null);
     try {
       const trimmedLockerId = lockerId.trim().toUpperCase();
-      const pickup = await onRetrieve(trimmedLockerId, pickupCode.trim());
-      setResult({ lockerId: trimmedLockerId, pickup });
+      const pickup = await onRetrieve(
+        pickupCode.trim(),
+        trimmedLockerId === '' ? undefined : trimmedLockerId,
+      );
+      setResult(pickup);
     } catch (cause) {
       if (cause instanceof ApiError) {
         setError(FRIENDLY_ERRORS[cause.code] ?? cause.message);
@@ -45,15 +52,6 @@ export function CustomerView({ onRetrieve }: CustomerViewProps) {
     <section aria-labelledby="customer-heading">
       <h2 id="customer-heading">Collect your package</h2>
       <form onSubmit={handleSubmit} className="panel form-grid">
-        <label htmlFor="locker-id">Locker ID</label>
-        <input
-          id="locker-id"
-          value={lockerId}
-          onChange={(event) => setLockerId(event.target.value)}
-          placeholder="e.g. S-1"
-          autoComplete="off"
-          required
-        />
         <label htmlFor="pickup-code">Pickup code</label>
         <input
           id="pickup-code"
@@ -63,6 +61,14 @@ export function CustomerView({ onRetrieve }: CustomerViewProps) {
           inputMode="numeric"
           autoComplete="off"
           required
+        />
+        <label htmlFor="locker-id">Locker ID (optional)</label>
+        <input
+          id="locker-id"
+          value={lockerId}
+          onChange={(event) => setLockerId(event.target.value)}
+          placeholder="e.g. S-1"
+          autoComplete="off"
         />
         <button type="submit" disabled={busy}>
           Open locker
@@ -78,14 +84,14 @@ export function CustomerView({ onRetrieve }: CustomerViewProps) {
           <p>
             Storage charge:{' '}
             <strong className="highlight">
-              {result.pickup.storageCharge === 0
+              {result.storageCharge === 0
                 ? 'Free — collected within the grace period'
-                : `RM${result.pickup.storageCharge}`}
+                : `RM${result.storageCharge}`}
             </strong>
           </p>
           <p className="hint">
-            Stored {new Date(result.pickup.storedAt).toLocaleString()} · Collected{' '}
-            {new Date(result.pickup.retrievedAt).toLocaleString()}
+            Stored {new Date(result.storedAt).toLocaleString()} · Collected{' '}
+            {new Date(result.retrievedAt).toLocaleString()}
           </p>
         </div>
       )}

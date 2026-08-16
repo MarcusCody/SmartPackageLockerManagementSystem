@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import type { AdminLockerView, LockerSize, LockerView } from '../api/client';
 import { ApiError } from '../api/client';
 import { AdminLockerBoard } from '../components/AdminLockerBoard';
+import { LockerWall } from '../components/LockerWall';
 
 interface OperationsViewProps {
   lockers: AdminLockerView[];
@@ -64,6 +65,9 @@ export function OperationsView({ lockers, onCreate }: OperationsViewProps) {
           {error}
         </p>
       )}
+
+      <h3 className="board-heading">Station preview</h3>
+      <LockerWall lockers={lockers} />
 
       <h3 className="board-heading">Locker overview</h3>
       <AdminLockerBoard lockers={lockers} />
