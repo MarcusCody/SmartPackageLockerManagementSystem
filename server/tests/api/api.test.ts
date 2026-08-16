@@ -113,6 +113,99 @@ describe('REST API', () => {
     });
   });
 
+  describe('orders (the delivery work queue)', () => {
+    const newOrder = {
+      customerName: 'Jane Tan',
+      customerEmail: 'jane.tan@example.com',
+      customerPhone: '+60 12-000 0001',
+      size: 'MEDIUM',
+    };
+
+    it('creates an order and lists it as pending', async () => {
+      const { app } = await buildTestApp();
+
+      const created = await request(app).post('/api/orders').send(newOrder);
+
+      expect(created.status).toBe(201);
+      expect(created.body.order).toEqual({
+        id: 'ORD-1001',
+        customerName: 'Jane Tan',
+        customerEmail: 'jane.tan@example.com',
+        customerPhone: '+60 12-000 0001',
+        size: 'MEDIUM',
+      });
+
+      const pending = await request(app).get('/api/orders');
+      expect(pending.body.orders).toEqual([created.body.order]);
+    });
+
+    it('rejects an order with an invalid email', async () => {
+      const { app } = await buildTestApp();
+
+      const response = await request(app)
+        .post('/api/orders')
+        .send({ ...newOrder, customerEmail: 'nope' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it("stores a pending order by its size and emails the order's contact", async () => {
+      const { app, notifier } = await buildTestApp([
+        new Locker('S-1', 'SMALL'),
+        new Locker('M-1', 'MEDIUM'),
+      ]);
+      await request(app).post('/api/orders').send(newOrder);
+
+      const response = await request(app).post('/api/orders/ORD-1001/store').send();
+
+      expect(response.status).toBe(201);
+      expect(response.body.lockerId).toBe('M-1');
+      expect(response.body.pickupCode).toBe('CODE01');
+      expect(response.body.notification).toBe('sent');
+      expect(response.body.order.id).toBe('ORD-1001');
+      expect(notifier.sent[0]).toMatchObject({ to: 'jane.tan@example.com', lockerId: 'M-1' });
+
+      const pending = await request(app).get('/api/orders');
+      expect(pending.body.orders).toEqual([]);
+    });
+
+    it('rejects storing the same order twice', async () => {
+      const { app } = await buildTestApp([new Locker('M-1', 'MEDIUM'), new Locker('M-2', 'MEDIUM')]);
+      await request(app).post('/api/orders').send(newOrder);
+      await request(app).post('/api/orders/ORD-1001/store').send();
+
+      const replay = await request(app).post('/api/orders/ORD-1001/store').send();
+
+      expect(replay.status).toBe(409);
+      expect(replay.body.error.code).toBe('ORDER_ALREADY_STORED');
+    });
+
+    it('returns 404 for an unknown order', async () => {
+      const { app } = await buildTestApp();
+
+      const response = await request(app).post('/api/orders/ORD-9999/store').send();
+
+      expect(response.status).toBe(404);
+      expect(response.body.error.code).toBe('ORDER_NOT_FOUND');
+    });
+
+    it('keeps the order pending when no suitable locker is available', async () => {
+      const { app } = await buildTestApp([new Locker('S-1', 'SMALL')]);
+      await request(app)
+        .post('/api/orders')
+        .send({ ...newOrder, size: 'LARGE' });
+
+      const response = await request(app).post('/api/orders/ORD-1001/store').send();
+
+      expect(response.status).toBe(409);
+      expect(response.body.error.code).toBe('NO_SUITABLE_LOCKER');
+
+      const pending = await request(app).get('/api/orders');
+      expect(pending.body.orders).toHaveLength(1);
+    });
+  });
+
   describe('GET /api/admin/lockers (operations overview)', () => {
     it('shows PIN, storage time and accrued charge for occupied lockers only', async () => {
       const { app, clock } = await buildTestApp([

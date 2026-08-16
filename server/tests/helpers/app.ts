@@ -1,8 +1,11 @@
 import type { Locker } from '../../src/domain/Locker.js';
 import { StorePackageService } from '../../src/application/StorePackageService.js';
 import { RetrievePackageService } from '../../src/application/RetrievePackageService.js';
+import { StoreOrderService } from '../../src/application/StoreOrderService.js';
 import { LockerOverviewService } from '../../src/application/LockerOverviewService.js';
 import { LockerFactory } from '../../src/application/LockerFactory.js';
+import { OrderFactory } from '../../src/application/OrderFactory.js';
+import { InMemoryOrderRepository } from '../../src/infrastructure/InMemoryOrderRepository.js';
 import { SmallestSuitableLockerStrategy } from '../../src/application/policies/LockerAllocationStrategy.js';
 import { TieredStorageFeePolicy } from '../../src/application/policies/StorageFeePolicy.js';
 import { InMemoryLockerRepository } from '../../src/infrastructure/InMemoryLockerRepository.js';
@@ -22,24 +25,29 @@ export async function buildTestApp(
   }
   const clock = new FixedClock(TEST_NOW);
   const notifier = new RecordingNotifier();
+  const orderRepository = new InMemoryOrderRepository();
   // Spec-example schedule so integration tests exercise non-zero charges.
   const feePolicy = new TieredStorageFeePolicy([
     { upToDay: 5, ratePerDay: 10 },
     { upToDay: 10, ratePerDay: 20 },
     { ratePerDay: 30 },
   ]);
+  const storePackageService = new StorePackageService(
+    repository,
+    new SmallestSuitableLockerStrategy(),
+    new SequenceCodeGenerator(codes),
+    clock,
+    notifier,
+  );
   const app = createApp({
     lockerRepository: repository,
     lockerFactory: new LockerFactory(),
-    storePackageService: new StorePackageService(
-      repository,
-      new SmallestSuitableLockerStrategy(),
-      new SequenceCodeGenerator(codes),
-      clock,
-      notifier,
-    ),
+    orderRepository,
+    orderFactory: new OrderFactory(),
+    storePackageService,
+    storeOrderService: new StoreOrderService(orderRepository, storePackageService),
     retrievePackageService: new RetrievePackageService(repository, feePolicy, clock),
     lockerOverviewService: new LockerOverviewService(repository, feePolicy, clock),
   });
-  return { app, clock, repository, notifier };
+  return { app, clock, repository, notifier, orderRepository };
 }
