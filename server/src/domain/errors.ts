@@ -58,7 +58,11 @@ export class LockerEmptyError extends DomainError {
 export class InvalidPickupCodeError extends DomainError {
   readonly code = 'INVALID_PICKUP_CODE';
 
-  constructor(lockerId: string) {
-    super(`The pickup code is not valid for locker ${lockerId}.`);
+  constructor(lockerId?: string) {
+    super(
+      lockerId === undefined
+        ? 'The pickup code does not match any stored package.'
+        : `The pickup code is not valid for locker ${lockerId}.`,
+    );
   }
 }

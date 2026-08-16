@@ -23,6 +23,8 @@ export interface LockerRepository {
   add(locker: Locker): Promise<void>;
   findAll(): Promise<Locker[]>;
   findById(id: string): Promise<Locker | undefined>;
+  /** The locker currently holding this pickup code, if any — PINs are unique among active packages. */
+  findByActivePickupCode(pickupCode: string): Promise<Locker | undefined>;
 
   /**
    * Atomically selects a locker via the strategy and stores the package

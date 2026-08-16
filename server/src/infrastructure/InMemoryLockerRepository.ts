@@ -22,6 +22,12 @@ export class InMemoryLockerRepository implements LockerRepository {
     return this.lockers.get(id);
   }
 
+  async findByActivePickupCode(pickupCode: string): Promise<Locker | undefined> {
+    return [...this.lockers.values()].find(
+      (locker) => locker.activePickupCode === pickupCode,
+    );
+  }
+
   async findAndReserve(
     pkg: Package,
     pickupCode: string,

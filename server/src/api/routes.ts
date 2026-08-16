@@ -11,8 +11,10 @@ import type { LockerOverviewService } from '../application/LockerOverviewService
 const createLockerSchema = z.object({ size: z.enum(LOCKER_SIZES) });
 const storePackageSchema = z.object({ size: z.enum(LOCKER_SIZES) });
 const pickupSchema = z.object({
-  lockerId: z.string().trim().min(1),
   pickupCode: z.string().trim().min(1),
+  // Optional: PINs are unique among active packages, so the code alone
+  // is enough; when provided, the locker+code pair is validated.
+  lockerId: z.string().trim().min(1).optional(),
 });
 
 const toLockerView = (locker: Locker) => ({
@@ -62,10 +64,11 @@ export function apiRoutes(deps: ApiDependencies): Router {
   });
 
   router.post('/pickups', async (req, res) => {
-    const { lockerId, pickupCode } = pickupSchema.parse(req.body);
-    const result = await deps.retrievePackageService.retrieve(lockerId, pickupCode);
+    const { pickupCode, lockerId } = pickupSchema.parse(req.body);
+    const result = await deps.retrievePackageService.retrieve(pickupCode, lockerId);
     res.json({
       opened: true,
+      lockerId: result.lockerId,
       package: result.package,
       storedAt: result.storedAt.toISOString(),
       retrievedAt: result.retrievedAt.toISOString(),
