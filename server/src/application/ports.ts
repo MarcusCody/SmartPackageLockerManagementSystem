@@ -1,10 +1,28 @@
 import type { Locker } from '../domain/Locker.js';
 import type { Package } from '../domain/Package.js';
+import type { LockerSize } from '../domain/LockerSize.js';
 import type { LockerAllocationStrategy } from './policies/LockerAllocationStrategy.js';
 
 /** Time source, injected so time-dependent behaviour is deterministic in tests. */
 export interface Clock {
   now(): Date;
+}
+
+export interface PickupNotification {
+  to: string;
+  lockerId: string;
+  pickupCode: string;
+  packageSize: LockerSize;
+  storedAt: Date;
+}
+
+/**
+ * Sends the pickup PIN to the customer. Channel-agnostic on purpose:
+ * email today (Azure Communication Services in production, console in
+ * dev), and an SMS adapter would implement this same port.
+ */
+export interface PickupNotifier {
+  sendPickupCode(notification: PickupNotification): Promise<void>;
 }
 
 /**

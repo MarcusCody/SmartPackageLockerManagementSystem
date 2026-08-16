@@ -11,6 +11,8 @@ import { TieredStorageFeePolicy } from './application/policies/StorageFeePolicy.
 import { InMemoryLockerRepository } from './infrastructure/InMemoryLockerRepository.js';
 import { RandomPickupCodeGenerator } from './infrastructure/RandomPickupCodeGenerator.js';
 import { SystemClock } from './infrastructure/SystemClock.js';
+import { ConsoleNotifier } from './infrastructure/notifications/ConsoleNotifier.js';
+import { AcsEmailNotifier } from './infrastructure/notifications/AcsEmailNotifier.js';
 import { createApp } from './api/server.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -51,6 +53,21 @@ async function main(): Promise<void> {
 
   const clock = new SystemClock();
   const feePolicy = new TieredStorageFeePolicy(STORAGE_FEE_SCHEDULE);
+
+  // Real email only when ACS is configured; otherwise emails render to
+  // the console so the flow works with zero external dependencies.
+  const acsConnectionString = process.env.ACS_CONNECTION_STRING;
+  const emailSenderAddress = process.env.EMAIL_SENDER_ADDRESS;
+  const usingAcs = acsConnectionString !== undefined && emailSenderAddress !== undefined;
+  const notifier = usingAcs
+    ? new AcsEmailNotifier(acsConnectionString, emailSenderAddress)
+    : new ConsoleNotifier();
+  console.log(
+    usingAcs
+      ? 'Email notifications: Azure Communication Services'
+      : 'Email notifications: console only (set ACS_CONNECTION_STRING and EMAIL_SENDER_ADDRESS to send real email)',
+  );
+
   const app = createApp(
     {
       lockerRepository: repository,
@@ -60,6 +77,7 @@ async function main(): Promise<void> {
         new SmallestSuitableLockerStrategy(),
         new RandomPickupCodeGenerator(),
         clock,
+        notifier,
       ),
       retrievePackageService: new RetrievePackageService(repository, feePolicy, clock),
       lockerOverviewService: new LockerOverviewService(repository, feePolicy, clock),

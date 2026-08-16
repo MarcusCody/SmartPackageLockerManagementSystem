@@ -10,6 +10,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@azure/communication-email": "^1.1.0",
     "express": "^5.2.1",
     "zod": "^4.4.3"
   },

@@ -9,7 +9,11 @@ import type { RetrievePackageService } from '../application/RetrievePackageServi
 import type { LockerOverviewService } from '../application/LockerOverviewService.js';
 
 const createLockerSchema = z.object({ size: z.enum(LOCKER_SIZES) });
-const storePackageSchema = z.object({ size: z.enum(LOCKER_SIZES) });
+const storePackageSchema = z.object({
+  size: z.enum(LOCKER_SIZES),
+  // Optional: when present, the pickup PIN is emailed to the customer.
+  customerEmail: z.email().optional(),
+});
 const pickupSchema = z.object({
   pickupCode: z.string().trim().min(1),
   // Optional: PINs are unique among active packages, so the code alone
@@ -58,8 +62,8 @@ export function apiRoutes(deps: ApiDependencies): Router {
   });
 
   router.post('/packages', async (req, res) => {
-    const { size } = storePackageSchema.parse(req.body);
-    const result = await deps.storePackageService.store(size);
+    const { size, customerEmail } = storePackageSchema.parse(req.body);
+    const result = await deps.storePackageService.store(size, customerEmail);
     res.status(201).json(result);
   });
 
