@@ -122,7 +122,7 @@ describe('REST API', () => {
     };
 
     it('creates an order awaiting dispatch — not yet in the station queue', async () => {
-      const { app } = await buildTestApp();
+      const { app } = await buildTestApp([new Locker('M-1', 'MEDIUM')]);
 
       const created = await request(app).post('/api/orders').send(newOrder);
 
@@ -143,7 +143,7 @@ describe('REST API', () => {
     });
 
     it("dispatching moves the order into the agent's pending queue", async () => {
-      const { app } = await buildTestApp();
+      const { app } = await buildTestApp([new Locker('M-1', 'MEDIUM')]);
       await request(app).post('/api/orders').send(newOrder);
 
       const dispatched = await request(app).post('/api/orders/ORD-1001/dispatch').send();
@@ -159,7 +159,7 @@ describe('REST API', () => {
     });
 
     it('rejects dispatching the same order twice', async () => {
-      const { app } = await buildTestApp();
+      const { app } = await buildTestApp([new Locker('M-1', 'MEDIUM')]);
       await request(app).post('/api/orders').send(newOrder);
       await request(app).post('/api/orders/ORD-1001/dispatch').send();
 
@@ -232,12 +232,15 @@ describe('REST API', () => {
       expect(response.body.error.code).toBe('ORDER_NOT_FOUND');
     });
 
-    it('keeps the order pending when no suitable locker is available', async () => {
-      const { app } = await buildTestApp([new Locker('S-1', 'SMALL')]);
+    it('keeps the order pending when the locker filled up after the order was accepted', async () => {
+      const { app } = await buildTestApp([new Locker('L-1', 'LARGE')]);
+      // Accepted while L-1 was free…
       await request(app)
         .post('/api/orders')
         .send({ ...newOrder, size: 'LARGE' });
       await request(app).post('/api/orders/ORD-1001/dispatch').send();
+      // …but a walk-in package takes the locker first.
+      await request(app).post('/api/packages').send({ size: 'LARGE' });
 
       const response = await request(app).post('/api/orders/ORD-1001/store').send();
 
@@ -246,6 +249,43 @@ describe('REST API', () => {
 
       const pending = await request(app).get('/api/orders');
       expect(pending.body.orders).toHaveLength(1);
+    });
+
+    it('refuses an order beyond station capacity, counting undelivered orders', async () => {
+      const { app } = await buildTestApp([new Locker('M-1', 'MEDIUM')]);
+
+      const tooBig = await request(app).post('/api/orders').send({ ...newOrder, size: 'LARGE' });
+      expect(tooBig.status).toBe(409);
+      expect(tooBig.body.error.code).toBe('STATION_AT_CAPACITY');
+
+      await request(app).post('/api/orders').send(newOrder); // takes the only slot
+      const overbooked = await request(app).post('/api/orders').send(newOrder);
+      expect(overbooked.status).toBe(409);
+      expect(overbooked.body.error.code).toBe('STATION_AT_CAPACITY');
+    });
+
+    it('mocks an incoming platform order sized to the available capacity', async () => {
+      const { app } = await buildTestApp([new Locker('S-1', 'SMALL')]);
+
+      const mocked = await request(app).post('/api/orders/mock').send();
+
+      expect(mocked.status).toBe(201);
+      expect(mocked.body.order.size).toBe('SMALL'); // the only size with capacity
+      expect(mocked.body.order.customerEmail).toMatch(/@example\.com$/);
+
+      const awaiting = await request(app).get('/api/orders?status=awaiting-dispatch');
+      expect(awaiting.body.orders).toHaveLength(1);
+    });
+
+    it('tells operations when the station is too full to mock an order', async () => {
+      const { app } = await buildTestApp([new Locker('S-1', 'SMALL')]);
+      await request(app).post('/api/orders/mock').send();
+
+      const refused = await request(app).post('/api/orders/mock').send();
+
+      expect(refused.status).toBe(409);
+      expect(refused.body.error.code).toBe('STATION_AT_CAPACITY');
+      expect(refused.body.error.message).toMatch(/cannot accept new orders/i);
     });
   });
 
