@@ -1,29 +1,32 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import type { AdminLockerView, LockerSize, LockerView, NewOrder, OrderView } from '../api/client';
+import type { AdminLockerView, LockerSize, LockerView, OrderView } from '../api/client';
 import { ApiError } from '../api/client';
 import { AdminLockerBoard } from '../components/AdminLockerBoard';
 import { LockerWall } from '../components/LockerWall';
 
 interface OperationsViewProps {
   lockers: AdminLockerView[];
+  incoming: OrderView[];
   onCreate: (size: LockerSize) => Promise<LockerView>;
-  onCreateOrder: (order: NewOrder) => Promise<OrderView>;
+  onDispatch: (orderId: string) => Promise<OrderView>;
 }
 
-/** Internal station-operator flow: add lockers, register orders, watch capacity. */
-export function OperationsView({ lockers, onCreate, onCreateOrder }: OperationsViewProps) {
+const SIZE_LABEL: Record<LockerSize, string> = {
+  SMALL: 'Small',
+  MEDIUM: 'Medium',
+  LARGE: 'Large',
+};
+
+/** Internal station-operator flow: dispatch platform orders, add lockers, watch capacity. */
+export function OperationsView({ lockers, incoming, onCreate, onDispatch }: OperationsViewProps) {
   const [size, setSize] = useState<LockerSize>('SMALL');
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const [orderName, setOrderName] = useState('');
-  const [orderEmail, setOrderEmail] = useState('');
-  const [orderPhone, setOrderPhone] = useState('');
-  const [orderSize, setOrderSize] = useState<LockerSize>('SMALL');
-  const [orderMessage, setOrderMessage] = useState<string | null>(null);
-  const [orderError, setOrderError] = useState<string | null>(null);
+  const [dispatchMessage, setDispatchMessage] = useState<string | null>(null);
+  const [dispatchError, setDispatchError] = useState<string | null>(null);
 
   const available = lockers.filter((locker) => locker.available).length;
 
@@ -42,24 +45,15 @@ export function OperationsView({ lockers, onCreate, onCreateOrder }: OperationsV
     }
   }
 
-  async function handleOrderSubmit(event: FormEvent) {
-    event.preventDefault();
+  async function dispatchOrder(orderId: string) {
     setBusy(true);
-    setOrderMessage(null);
-    setOrderError(null);
+    setDispatchMessage(null);
+    setDispatchError(null);
     try {
-      const order = await onCreateOrder({
-        customerName: orderName.trim(),
-        customerEmail: orderEmail.trim(),
-        customerPhone: orderPhone.trim(),
-        size: orderSize,
-      });
-      setOrderMessage(`${order.id} registered — it is now in the delivery agent's queue.`);
-      setOrderName('');
-      setOrderEmail('');
-      setOrderPhone('');
+      const order = await onDispatch(orderId);
+      setDispatchMessage(`${order.id} dispatched — it is now in the delivery agent's queue.`);
     } catch (cause) {
-      setOrderError(
+      setDispatchError(
         cause instanceof ApiError ? cause.message : 'Something went wrong. Please retry.',
       );
     } finally {
@@ -99,61 +93,45 @@ export function OperationsView({ lockers, onCreate, onCreateOrder }: OperationsV
         </p>
       )}
 
-      <h3 className="board-heading">Register incoming order</h3>
+      <h3 className="board-heading">Incoming from platform</h3>
       <p className="hint">
-        Simulates the e-commerce platform handing a delivery (with the customer&apos;s contact
-        details) to this station.
+        Orders registered by the e-commerce platform, waiting to be dispatched to this station.
       </p>
-      <form onSubmit={handleOrderSubmit} className="panel form-grid">
-        <label htmlFor="order-name">Customer name</label>
-        <input
-          id="order-name"
-          value={orderName}
-          onChange={(event) => setOrderName(event.target.value)}
-          autoComplete="off"
-          required
-        />
-        <label htmlFor="order-email">Customer email</label>
-        <input
-          id="order-email"
-          type="email"
-          value={orderEmail}
-          onChange={(event) => setOrderEmail(event.target.value)}
-          placeholder="customer@example.com"
-          autoComplete="off"
-          required
-        />
-        <label htmlFor="order-phone">Customer phone</label>
-        <input
-          id="order-phone"
-          value={orderPhone}
-          onChange={(event) => setOrderPhone(event.target.value)}
-          placeholder="+60 12-345 6789"
-          autoComplete="off"
-          required
-        />
-        <label htmlFor="order-size">Order size</label>
-        <select
-          id="order-size"
-          value={orderSize}
-          onChange={(event) => setOrderSize(event.target.value as LockerSize)}
-        >
-          <option value="SMALL">Small</option>
-          <option value="MEDIUM">Medium</option>
-          <option value="LARGE">Large</option>
-        </select>
-        <button type="submit" disabled={busy}>
-          Register order
-        </button>
-      </form>
-      {orderMessage && (
+      {incoming.length === 0 ? (
+        <p className="board-empty">No incoming orders from the platform right now.</p>
+      ) : (
+        <ul className="order-list" aria-label="Incoming orders">
+          {incoming.map((order) => (
+            <li key={order.id} className="panel order-row">
+              <div className="order-info">
+                <div>
+                  <strong>{order.id}</strong>{' '}
+                  <span className="order-size">{SIZE_LABEL[order.size]}</span>
+                </div>
+                <div className="order-contact">
+                  {order.customerName} · {order.customerEmail} · {order.customerPhone}
+                </div>
+              </div>
+              <button
+                type="button"
+                aria-label={`Dispatch order ${order.id} to this station`}
+                onClick={() => void dispatchOrder(order.id)}
+                disabled={busy}
+              >
+                Dispatch to station
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {dispatchMessage && (
         <p className="panel result-panel" role="status">
-          {orderMessage}
+          {dispatchMessage}
         </p>
       )}
-      {orderError && (
+      {dispatchError && (
         <p className="panel error-panel" role="alert">
-          {orderError}
+          {dispatchError}
         </p>
       )}
 

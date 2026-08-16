@@ -47,6 +47,23 @@ export interface StoreOrderResult extends StoreResult {
   };
 }
 
+/** A package that sat past the return threshold and belongs back at the warehouse. */
+export interface OverdueView {
+  lockerId: string;
+  size: LockerSize;
+  storedAt: string;
+  daysInLocker: number;
+  orderId: string | null;
+  customerName: string | null;
+}
+
+export interface ReturnResult {
+  returned: boolean;
+  lockerId: string;
+  packageId: string;
+  orderId: string | null;
+}
+
 export interface PickupResult {
   opened: boolean;
   /** Which locker opened — the customer may have collected by PIN alone. */
@@ -117,6 +134,32 @@ export const api = {
   async listOrders(): Promise<OrderView[]> {
     const { orders } = await requestJson<{ orders: OrderView[] }>('/api/orders');
     return orders;
+  },
+
+  async listIncomingOrders(): Promise<OrderView[]> {
+    const { orders } = await requestJson<{ orders: OrderView[] }>(
+      '/api/orders?status=awaiting-dispatch',
+    );
+    return orders;
+  },
+
+  async dispatchOrder(orderId: string): Promise<OrderView> {
+    const { order } = await requestJson<{ order: OrderView }>(
+      `/api/orders/${encodeURIComponent(orderId)}/dispatch`,
+      { method: 'POST' },
+    );
+    return order;
+  },
+
+  async listReturns(): Promise<OverdueView[]> {
+    const { overdue } = await requestJson<{ overdue: OverdueView[] }>('/api/returns');
+    return overdue;
+  },
+
+  returnToWarehouse(lockerId: string): Promise<ReturnResult> {
+    return requestJson<ReturnResult>(`/api/lockers/${encodeURIComponent(lockerId)}/return`, {
+      method: 'POST',
+    });
   },
 
   async createOrder(order: NewOrder): Promise<OrderView> {
