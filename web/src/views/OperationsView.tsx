@@ -10,6 +10,7 @@ interface OperationsViewProps {
   incoming: OrderView[];
   onCreate: (size: LockerSize) => Promise<LockerView>;
   onDispatch: (orderId: string) => Promise<OrderView>;
+  onMockOrder: () => Promise<OrderView>;
 }
 
 const SIZE_LABEL: Record<LockerSize, string> = {
@@ -19,7 +20,13 @@ const SIZE_LABEL: Record<LockerSize, string> = {
 };
 
 /** Internal station-operator flow: dispatch platform orders, add lockers, watch capacity. */
-export function OperationsView({ lockers, incoming, onCreate, onDispatch }: OperationsViewProps) {
+export function OperationsView({
+  lockers,
+  incoming,
+  onCreate,
+  onDispatch,
+  onMockOrder,
+}: OperationsViewProps) {
   const [size, setSize] = useState<LockerSize>('SMALL');
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +59,24 @@ export function OperationsView({ lockers, incoming, onCreate, onDispatch }: Oper
     try {
       const order = await onDispatch(orderId);
       setDispatchMessage(`${order.id} dispatched — it is now in the delivery agent's queue.`);
+    } catch (cause) {
+      setDispatchError(
+        cause instanceof ApiError ? cause.message : 'Something went wrong. Please retry.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function mockOrder() {
+    setBusy(true);
+    setDispatchMessage(null);
+    setDispatchError(null);
+    try {
+      const order = await onMockOrder();
+      setDispatchMessage(
+        `${order.id} (${order.size.toLowerCase()}, ${order.customerName}) arrived from the platform.`,
+      );
     } catch (cause) {
       setDispatchError(
         cause instanceof ApiError ? cause.message : 'Something went wrong. Please retry.',
@@ -96,6 +121,13 @@ export function OperationsView({ lockers, incoming, onCreate, onDispatch }: Oper
       <h3 className="board-heading">Incoming from platform</h3>
       <p className="hint">
         Orders registered by the e-commerce platform, waiting to be dispatched to this station.
+        The platform only accepts orders the station can absorb (free lockers minus undelivered
+        orders, size-aware).
+      </p>
+      <p>
+        <button type="button" onClick={() => void mockOrder()} disabled={busy}>
+          Mock incoming order
+        </button>
       </p>
       {incoming.length === 0 ? (
         <p className="board-empty">No incoming orders from the platform right now.</p>

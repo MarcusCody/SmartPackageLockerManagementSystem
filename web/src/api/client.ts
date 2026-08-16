@@ -143,6 +143,13 @@ export const api = {
     return orders;
   },
 
+  async mockOrder(): Promise<OrderView> {
+    const { order } = await requestJson<{ order: OrderView }>('/api/orders/mock', {
+      method: 'POST',
+    });
+    return order;
+  },
+
   async dispatchOrder(orderId: string): Promise<OrderView> {
     const { order } = await requestJson<{ order: OrderView }>(
       `/api/orders/${encodeURIComponent(orderId)}/dispatch`,

@@ -39,12 +39,21 @@ export function OperationPage() {
     }
   }, []);
 
+  const mockOrder = useCallback(async () => {
+    try {
+      return await api.mockOrder();
+    } finally {
+      setIncoming(await api.listIncomingOrders());
+    }
+  }, []);
+
   return (
     <OperationsView
       lockers={lockers}
       incoming={incoming}
       onCreate={createLocker}
       onDispatch={dispatchOrder}
+      onMockOrder={mockOrder}
     />
   );
 }
