@@ -35,6 +35,11 @@ try {
     await call('POST', '/api/orders/ORD-1004/dispatch'),
   );
 
+  show(
+    'Platform: mock a new incoming order — capacity-checked against free lockers and undelivered orders',
+    await call('POST', '/api/orders/mock'),
+  );
+
   show('Agent: the pending-order queue (3 seeded + the one just dispatched)', await call('GET', '/api/orders'));
 
   show(

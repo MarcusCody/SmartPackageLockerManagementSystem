@@ -2,9 +2,12 @@
 
 A locker station where **delivery agents store packages** and **customers retrieve them** with a pickup code — built for the Everest Engineering coding challenge (Levels 1–4, including the optional concurrency level).
 
-- **Server:** TypeScript (strict), Node 20, Express 5, zod — domain-driven, dependency-injected, in-memory storage behind a repository port
+**Live demo:** <https://smartlocker-hjie30.azurewebsites.net> (Azure App Service F1 — allow ~30s for a cold start)
+
+- **Server:** TypeScript (strict), Node 20+, Express 5, zod — domain-driven, dependency-injected, storage behind repository ports (PostgreSQL or in-memory)
 - **UI:** React 19 + Vite + react-router — a thin client with a route per role (`/delivery`, `/customer`, `/operation`) over the REST API
-- **Tests:** Vitest — 140 tests: domain and application units, supertest API integration, concurrency race/stress tests, and React Testing Library flows
+- **Persistence:** PostgreSQL via plain `pg` (docker-compose locally, Azure Database for PostgreSQL in the cloud); in-memory remains the zero-config default
+- **Tests:** Vitest — 171 tests: domain and application units, supertest API integration, concurrency race/stress tests, Postgres adapter integration (against a real database in CI), and React Testing Library flows
 
 ## Quick start
 
@@ -29,7 +32,16 @@ npm run demo           # scripted API walkthrough (server must be running)
 npm run lint           # ESLint over both workspaces
 ```
 
-Configuration: `PORT` (3000), `SEED_LOCKERS` (`SMALL:3,MEDIUM:3,LARGE:2`) and `RETURN_AFTER_DAYS` (15 — set `0` to demo warehouse returns instantly) via env vars; the storage fee schedule is configured at the composition root ([server/src/index.ts](server/src/index.ts)). For real email, set `ACS_CONNECTION_STRING` and `EMAIL_SENDER_ADDRESS` (see **Email notifications**) — without them, emails render to the server console.
+Optional PostgreSQL persistence (in-memory is the default):
+
+```bash
+docker compose up -d db
+DATABASE_URL=postgres://locker:locker@localhost:5433/smartlocker npm run dev
+# adapter integration tests run when a test DB is provided:
+DATABASE_URL_TEST=postgres://locker:locker@localhost:5433/smartlocker_test npm test
+```
+
+Configuration: `PORT` (3000), `SEED_LOCKERS` (`SMALL:3,MEDIUM:3,LARGE:2`), `RETURN_AFTER_DAYS` (15 — set `0` to demo warehouse returns instantly) and `DATABASE_URL` via env vars (see [.env.example](.env.example)); the storage fee schedule is configured at the composition root ([server/src/index.ts](server/src/index.ts)). For real email, set `ACS_CONNECTION_STRING` and `EMAIL_SENDER_ADDRESS` (see **Email notifications**) — without them, emails render to the server console.
 
 ## How it works
 
@@ -101,7 +113,8 @@ There is deliberately **no DI container and no ORM** — constructor injection a
 | `POST /api/lockers`  | `{size}`                   | `201 {locker}`                                                  | `400` invalid size                         |
 | `GET /api/admin/lockers` | —                      | `200` — adds `pickupCode`, `storedAt`, `accruedCharge` per occupied locker | — (internal: would sit behind operator auth in production) |
 | `GET /api/orders`    | `?status=pending` (default) or `awaiting-dispatch` | `200 {orders}`                          | —                                          |
-| `POST /api/orders`   | `{customerName, customerEmail, customerPhone, size}` | `201 {order}` — the upstream platform registers a delivery (awaiting dispatch) | `400` validation |
+| `POST /api/orders`   | `{customerName, customerEmail, customerPhone, size}` | `201 {order}` — the upstream platform registers a delivery (awaiting dispatch) | `400` validation · `409` station at capacity |
+| `POST /api/orders/mock` | —                       | `201 {order}` — simulates the platform pushing a random delivery, sized to remaining capacity | `409` station at capacity |
 | `POST /api/orders/:id/dispatch` | —               | `200 {order}` — joins the agent's pending queue                 | `404` unknown · `409` already dispatched   |
 | `POST /api/orders/:id/store` | —                  | `201 {lockerId, pickupCode, packageId, notification, order}`    | `404` unknown · `409` not dispatched / already stored / no suitable locker |
 | `GET /api/returns`   | —                          | `200 {overdue}` — packages past the return threshold            | —                                          |
@@ -117,7 +130,7 @@ One route per role (no authentication — roles are presentation-level, see assu
 
 - **`/delivery`** — the agent's **pending-order queue**: each order arrives with the customer's name, email and phone, so the agent never types contact details. Storing an order assigns the locker, emails the PIN, and confirms who was notified (with a copy button for the PIN). Below it, the **overdue list**: packages past the return threshold show their days-in-locker and go back to the warehouse with one click. Shows the availability board so the agent can see capacity.
 - **`/customer`** — enter the 6-digit PIN (locker id optional); the system opens the right locker, names it, and shows the storage charge; failures get friendly, specific copy. **No locker board here** — which lockers exist or are occupied is not the customer's business.
-- **`/operation`** (internal) — add lockers, **dispatch incoming platform orders** to the station (nobody types customer data — orders arrive from the platform with contact details attached), see capacity counts, a **station wall preview** (cabinet columns of doors sized by locker size, occupied doors showing a parcel), and the locker overview where each occupied locker shows its **pickup PIN, storage time and the charge accrued so far**.
+- **`/operation`** (internal) — add lockers, **dispatch incoming platform orders** to the station (nobody types customer data — orders arrive from the platform with contact details attached), **mock a new incoming order** (capacity-checked; a full station explains itself), see capacity counts, a **station wall preview** (cabinet columns of doors sized by locker size, occupied doors showing a parcel), and the locker overview where each occupied locker shows its **pickup PIN, storage time and the charge accrued so far**.
 
 Accessibility: labelled controls, keyboard-operable forms, `alert`/`status` live regions, visible focus outlines.
 
@@ -142,6 +155,19 @@ The charge is visible in two places: the customer sees the final amount with the
 Reservation is **atomic at the repository boundary**: `findAndReserve` selects and stores in one synchronous critical section, so two concurrent requests can never be handed the same locker, and excess requests get the "no suitable locker" message. This is verified by a race test (10 simultaneous stores against 4 lockers → exactly 4 distinct assignments) and a stress test (120 interleaved store+pickup tasks → every package only ever behind its own code, station fully free at the end).
 
 **Honest scope:** this guarantee holds within one Node process, which is also why the app must run as a single instance while storage is in-memory. Scaling out would fork the locker state — the fix is a database adapter for `LockerRepository` using a transaction / unique constraint / optimistic locking, which is exactly the seam `findAndReserve` marks.
+
+## Station capacity (order intake rule)
+
+The platform never accepts an order the station cannot absorb. `StationCapacityPolicy` counts **free lockers** against **committed demand** — every order still awaiting dispatch or pending delivery — cumulatively across the nested sizes: for each tier from LARGE down, demand at-or-above the tier must not exceed free lockers at-or-above it. That allows upgrades (a SMALL package in a LARGE locker) without ever double-booking, and it guards both `POST /api/orders` and the mock-order button. When nothing fits, the operator sees exactly why (`STATION_AT_CAPACITY`).
+
+## Persistence (PostgreSQL)
+
+Storage sits behind the `LockerRepository`/`OrderRepository` ports. Set `DATABASE_URL` and the composition root selects the plain-`pg` adapters (no ORM); otherwise everything runs in-memory. Two promises made earlier in this README are now kept **by the database**:
+
+- `findAndReserve` is a real transaction: candidates are locked with `SELECT … FOR UPDATE`, the allocation strategy picks in-process, and the reservation commits atomically — no double-assignment even across instances.
+- Active-PIN uniqueness is a **partial unique index** (`ON lockers (pickup_code) WHERE pickup_code IS NOT NULL`), not just application logic.
+
+Rows rehydrate through `Locker.restore`/`Order.restore` (the domain's own transitions — no invariant bypass), seeds apply only to an empty station, and id sequences resume from existing rows. The adapter integration suite (round-trips, the transactional reservation race, the unique index, the order lifecycle) runs against a real Postgres service container in CI and locally via `DATABASE_URL_TEST`.
 
 ## Warehouse returns (overdue packages)
 
@@ -213,13 +239,21 @@ EMAIL_SENDER_ADDRESS="DoNotReply@<guid>.azurecomm.net"
 - **UI end-to-end tests** — a Playwright smoke over the three tabs; unit/integration coverage is strong but browser-level coverage is thin by design.
 - **Observability** — structured logging and request tracing instead of the single console error hook.
 
-## Deploying to Azure (optional)
+## Deployment (Azure)
 
-The app is a single Node process (Express serves the API and the built UI), so Azure App Service (Linux, Node 20) fits directly:
+The app is a single Node process (Express serves the API **and** the built React UI), deployed as:
 
-1. Create an App Service with startup command `node server/dist/index.js`.
-2. Build with `npm ci && npm run build`; deploy the repo (e.g. GitHub Actions `azure/webapps-deploy` with a publish-profile secret).
-3. **Set instance count to 1** — locker state is in-memory (see Concurrency). The repository port is where Azure Database for PostgreSQL / Cosmos DB would slot in to lift that constraint.
+- **App Service** `smartlocker-hjie30` — Linux, Node 22 LTS, **F1 free tier** (cold starts after idle are normal), startup `node server/dist/index.js`, built by Oryx on deploy (`SCM_DO_BUILD_DURING_DEPLOYMENT=true`).
+- **Azure Database for PostgreSQL Flexible Server** `spl-db-hjie30` — Burstable **B1ms**, 32 GB, no HA (the cheapest configuration); `DATABASE_URL` lives only in App Service application settings.
+
+Redeploy after changes:
+
+```bash
+git archive --format=zip HEAD -o /tmp/spl.zip
+az webapp deploy -g rg-smart-package-locker -n smartlocker-hjie30 --src-path /tmp/spl.zip --type zip
+```
+
+Cost control on a student subscription: `az postgres flexible-server stop -g rg-smart-package-locker -n spl-db-hjie30` halts compute billing between demo sessions (`start` to resume); `az group delete -n rg-smart-package-locker` removes everything after the interview. With Postgres behind the repository port, multi-instance scale-out is now safe — `findAndReserve` is a database transaction.
 
 ## AI usage disclosure
 
