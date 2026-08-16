@@ -2,6 +2,8 @@ import type { Locker } from '../../src/domain/Locker.js';
 import { StorePackageService } from '../../src/application/StorePackageService.js';
 import { RetrievePackageService } from '../../src/application/RetrievePackageService.js';
 import { StoreOrderService } from '../../src/application/StoreOrderService.js';
+import { DispatchOrderService } from '../../src/application/DispatchOrderService.js';
+import { ReturnPackageService } from '../../src/application/ReturnPackageService.js';
 import { LockerOverviewService } from '../../src/application/LockerOverviewService.js';
 import { LockerFactory } from '../../src/application/LockerFactory.js';
 import { OrderFactory } from '../../src/application/OrderFactory.js';
@@ -18,6 +20,7 @@ export const TEST_NOW = new Date('2026-08-15T10:00:00Z');
 export async function buildTestApp(
   lockers: Locker[] = [],
   codes: string[] = ['CODE01', 'CODE02', 'CODE03', 'CODE04', 'CODE05'],
+  returnAfterDays = 15,
 ) {
   const repository = new InMemoryLockerRepository();
   for (const locker of lockers) {
@@ -46,6 +49,13 @@ export async function buildTestApp(
     orderFactory: new OrderFactory(),
     storePackageService,
     storeOrderService: new StoreOrderService(orderRepository, storePackageService),
+    dispatchOrderService: new DispatchOrderService(orderRepository),
+    returnPackageService: new ReturnPackageService(
+      repository,
+      orderRepository,
+      clock,
+      returnAfterDays,
+    ),
     retrievePackageService: new RetrievePackageService(repository, feePolicy, clock),
     lockerOverviewService: new LockerOverviewService(repository, feePolicy, clock),
   });

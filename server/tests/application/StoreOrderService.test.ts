@@ -4,6 +4,7 @@ import { Order } from '../../src/domain/Order.js';
 import {
   NoSuitableLockerError,
   OrderAlreadyStoredError,
+  OrderNotDispatchedError,
   OrderNotFoundError,
 } from '../../src/domain/errors.js';
 import { StorePackageService } from '../../src/application/StorePackageService.js';
@@ -15,13 +16,16 @@ import { FixedClock, RecordingNotifier, SequenceCodeGenerator } from '../helpers
 
 const NOW = new Date('2026-08-15T10:00:00Z');
 
-const order = (id: string, packageSize: 'SMALL' | 'MEDIUM' | 'LARGE' = 'MEDIUM') =>
-  new Order(id, {
+const order = (id: string, packageSize: 'SMALL' | 'MEDIUM' | 'LARGE' = 'MEDIUM') => {
+  const created = new Order(id, {
     customerName: 'Jane Tan',
     customerEmail: 'jane.tan@example.com',
     customerPhone: '+60 12-000 0001',
     packageSize,
   });
+  created.dispatch(); // orders reach the agent's queue via dispatch
+  return created;
+};
 
 async function setup(lockers: Locker[], orders: Order[]) {
   const lockerRepository = new InMemoryLockerRepository();
@@ -84,6 +88,19 @@ describe('StoreOrderService', () => {
 
     const lockers = await lockerRepository.findAll();
     expect(lockers.every((locker) => locker.isAvailable)).toBe(true);
+  });
+
+  it('rejects an order that has not been dispatched to this station yet', async () => {
+    const { service, orderRepository } = await setup([new Locker('M-1', 'MEDIUM')], []);
+    const awaiting = new Order('ORD-1001', {
+      customerName: 'Jane Tan',
+      customerEmail: 'jane.tan@example.com',
+      customerPhone: '+60 12-000 0001',
+      packageSize: 'MEDIUM',
+    });
+    await orderRepository.add(awaiting);
+
+    await expect(service.storeOrder('ORD-1001')).rejects.toThrow(OrderNotDispatchedError);
   });
 
   it('rejects storing the same order twice', async () => {

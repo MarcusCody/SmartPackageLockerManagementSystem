@@ -121,7 +121,7 @@ describe('REST API', () => {
       size: 'MEDIUM',
     };
 
-    it('creates an order and lists it as pending', async () => {
+    it('creates an order awaiting dispatch — not yet in the station queue', async () => {
       const { app } = await buildTestApp();
 
       const created = await request(app).post('/api/orders').send(newOrder);
@@ -135,8 +135,48 @@ describe('REST API', () => {
         size: 'MEDIUM',
       });
 
+      const awaiting = await request(app).get('/api/orders?status=awaiting-dispatch');
+      expect(awaiting.body.orders).toEqual([created.body.order]);
+
       const pending = await request(app).get('/api/orders');
-      expect(pending.body.orders).toEqual([created.body.order]);
+      expect(pending.body.orders).toEqual([]);
+    });
+
+    it("dispatching moves the order into the agent's pending queue", async () => {
+      const { app } = await buildTestApp();
+      await request(app).post('/api/orders').send(newOrder);
+
+      const dispatched = await request(app).post('/api/orders/ORD-1001/dispatch').send();
+
+      expect(dispatched.status).toBe(200);
+      expect(dispatched.body.order.id).toBe('ORD-1001');
+
+      const pending = await request(app).get('/api/orders');
+      expect(pending.body.orders.map((o: { id: string }) => o.id)).toEqual(['ORD-1001']);
+
+      const awaiting = await request(app).get('/api/orders?status=awaiting-dispatch');
+      expect(awaiting.body.orders).toEqual([]);
+    });
+
+    it('rejects dispatching the same order twice', async () => {
+      const { app } = await buildTestApp();
+      await request(app).post('/api/orders').send(newOrder);
+      await request(app).post('/api/orders/ORD-1001/dispatch').send();
+
+      const replay = await request(app).post('/api/orders/ORD-1001/dispatch').send();
+
+      expect(replay.status).toBe(409);
+      expect(replay.body.error.code).toBe('ORDER_ALREADY_DISPATCHED');
+    });
+
+    it('rejects storing an order that was never dispatched to this station', async () => {
+      const { app } = await buildTestApp([new Locker('M-1', 'MEDIUM')]);
+      await request(app).post('/api/orders').send(newOrder);
+
+      const response = await request(app).post('/api/orders/ORD-1001/store').send();
+
+      expect(response.status).toBe(409);
+      expect(response.body.error.code).toBe('ORDER_NOT_DISPATCHED');
     });
 
     it('rejects an order with an invalid email', async () => {
@@ -156,6 +196,7 @@ describe('REST API', () => {
         new Locker('M-1', 'MEDIUM'),
       ]);
       await request(app).post('/api/orders').send(newOrder);
+      await request(app).post('/api/orders/ORD-1001/dispatch').send();
 
       const response = await request(app).post('/api/orders/ORD-1001/store').send();
 
@@ -173,6 +214,7 @@ describe('REST API', () => {
     it('rejects storing the same order twice', async () => {
       const { app } = await buildTestApp([new Locker('M-1', 'MEDIUM'), new Locker('M-2', 'MEDIUM')]);
       await request(app).post('/api/orders').send(newOrder);
+      await request(app).post('/api/orders/ORD-1001/dispatch').send();
       await request(app).post('/api/orders/ORD-1001/store').send();
 
       const replay = await request(app).post('/api/orders/ORD-1001/store').send();
@@ -195,6 +237,7 @@ describe('REST API', () => {
       await request(app)
         .post('/api/orders')
         .send({ ...newOrder, size: 'LARGE' });
+      await request(app).post('/api/orders/ORD-1001/dispatch').send();
 
       const response = await request(app).post('/api/orders/ORD-1001/store').send();
 
@@ -203,6 +246,66 @@ describe('REST API', () => {
 
       const pending = await request(app).get('/api/orders');
       expect(pending.body.orders).toHaveLength(1);
+    });
+  });
+
+  describe('returns to warehouse (overdue packages)', () => {
+    const newOrder = {
+      customerName: 'Jane Tan',
+      customerEmail: 'jane.tan@example.com',
+      customerPhone: '+60 12-000 0001',
+      size: 'MEDIUM',
+    };
+
+    async function storeOrderViaApi(app: Parameters<typeof request>[0]) {
+      await request(app).post('/api/orders').send(newOrder);
+      await request(app).post('/api/orders/ORD-1001/dispatch').send();
+      return request(app).post('/api/orders/ORD-1001/store').send();
+    }
+
+    it('lists overdue packages once they sit past the threshold, then returns them', async () => {
+      const { app, clock } = await buildTestApp([new Locker('M-1', 'MEDIUM')]);
+      const stored = await storeOrderViaApi(app);
+
+      const before = await request(app).get('/api/returns');
+      expect(before.body.overdue).toEqual([]);
+
+      clock.advanceHours(15 * 24);
+
+      const after = await request(app).get('/api/returns');
+      expect(after.body.overdue).toHaveLength(1);
+      expect(after.body.overdue[0]).toMatchObject({
+        lockerId: 'M-1',
+        daysInLocker: 15,
+        orderId: 'ORD-1001',
+        customerName: 'Jane Tan',
+      });
+
+      const returned = await request(app).post('/api/lockers/M-1/return').send();
+      expect(returned.status).toBe(200);
+      expect(returned.body).toMatchObject({ returned: true, lockerId: 'M-1', orderId: 'ORD-1001' });
+
+      // Locker is free again and the old PIN is dead.
+      const board = await request(app).get('/api/lockers');
+      expect(board.body.lockers[0].available).toBe(true);
+      const pickup = await request(app)
+        .post('/api/pickups')
+        .send({ pickupCode: stored.body.pickupCode });
+      expect(pickup.status).toBe(422);
+
+      const emptied = await request(app).get('/api/returns');
+      expect(emptied.body.overdue).toEqual([]);
+    });
+
+    it('refuses to return a package that is not yet overdue', async () => {
+      const { app, clock } = await buildTestApp([new Locker('M-1', 'MEDIUM')]);
+      await storeOrderViaApi(app);
+      clock.advanceHours(24);
+
+      const response = await request(app).post('/api/lockers/M-1/return').send();
+
+      expect(response.status).toBe(422);
+      expect(response.body.error.code).toBe('PACKAGE_NOT_OVERDUE');
     });
   });
 
