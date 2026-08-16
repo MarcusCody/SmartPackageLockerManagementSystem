@@ -2,67 +2,96 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AgentView } from './AgentView';
 import { ApiError } from '../api/client';
+import type { OrderView } from '../api/client';
 
-const storeResult = (overrides: Record<string, unknown> = {}) => ({
-  lockerId: 'M-1',
+const orders: OrderView[] = [
+  {
+    id: 'ORD-1001',
+    customerName: 'Jane Tan',
+    customerEmail: 'jane.tan@example.com',
+    customerPhone: '+60 12-000 0001',
+    size: 'SMALL',
+  },
+  {
+    id: 'ORD-1002',
+    customerName: 'Adam Lee',
+    customerEmail: 'adam.lee@example.com',
+    customerPhone: '+60 12-000 0002',
+    size: 'MEDIUM',
+  },
+];
+
+const storeOrderResult = (overrides: Record<string, unknown> = {}) => ({
+  lockerId: 'S-1',
   pickupCode: '042731',
   packageId: 'pkg-1',
-  notification: 'none' as const,
+  notification: 'sent' as const,
+  order: {
+    id: 'ORD-1001',
+    customerName: 'Jane Tan',
+    customerEmail: 'jane.tan@example.com',
+    customerPhone: '+60 12-000 0001',
+    packageSize: 'SMALL' as const,
+  },
   ...overrides,
 });
 
 describe('AgentView', () => {
-  it('stores a package and shows the assigned locker and pickup code', async () => {
-    const onStore = vi.fn().mockResolvedValue(storeResult());
-    const user = userEvent.setup();
-    render(<AgentView onStore={onStore} />);
+  it('lists pending orders with the customer contact that came with them', () => {
+    render(<AgentView orders={orders} onStoreOrder={vi.fn()} />);
 
-    await user.selectOptions(screen.getByLabelText(/package size/i), 'MEDIUM');
-    await user.click(screen.getByRole('button', { name: /store package/i }));
-
-    expect(onStore).toHaveBeenCalledWith('MEDIUM', undefined);
-    expect(await screen.findByText('M-1')).toBeInTheDocument();
-    expect(screen.getByText('042731')).toBeInTheDocument();
+    expect(screen.getByText('ORD-1001')).toBeInTheDocument();
+    expect(screen.getByText(/jane tan/i)).toBeInTheDocument();
+    expect(screen.getByText(/jane\.tan@example\.com/)).toBeInTheDocument();
+    expect(screen.getByText(/\+60 12-000 0001/)).toBeInTheDocument();
+    expect(screen.getByText('ORD-1002')).toBeInTheDocument();
   });
 
-  it('emails the PIN when a customer email is entered and confirms it', async () => {
-    const onStore = vi.fn().mockResolvedValue(storeResult({ notification: 'sent' }));
+  it('stores the selected order and confirms locker, PIN and email', async () => {
+    const onStoreOrder = vi.fn().mockResolvedValue(storeOrderResult());
     const user = userEvent.setup();
-    render(<AgentView onStore={onStore} />);
+    render(<AgentView orders={orders} onStoreOrder={onStoreOrder} />);
 
-    await user.type(screen.getByLabelText(/customer email/i), 'jane@example.com');
-    await user.click(screen.getByRole('button', { name: /store package/i }));
+    await user.click(screen.getByRole('button', { name: /store order ord-1001/i }));
 
-    expect(onStore).toHaveBeenCalledWith('SMALL', 'jane@example.com');
-    expect(await screen.findByText(/pin sent to jane@example.com/i)).toBeInTheDocument();
+    expect(onStoreOrder).toHaveBeenCalledWith('ORD-1001');
+    expect(await screen.findByText('S-1')).toBeInTheDocument();
+    expect(screen.getByText('042731')).toBeInTheDocument();
+    expect(screen.getByText(/pin sent to jane\.tan@example\.com/i)).toBeInTheDocument();
   });
 
   it('warns the agent to share the PIN manually when the email fails', async () => {
-    const onStore = vi.fn().mockResolvedValue(storeResult({ notification: 'failed' }));
+    const onStoreOrder = vi.fn().mockResolvedValue(storeOrderResult({ notification: 'failed' }));
     const user = userEvent.setup();
-    render(<AgentView onStore={onStore} />);
+    render(<AgentView orders={orders} onStoreOrder={onStoreOrder} />);
 
-    await user.type(screen.getByLabelText(/customer email/i), 'jane@example.com');
-    await user.click(screen.getByRole('button', { name: /store package/i }));
+    await user.click(screen.getByRole('button', { name: /store order ord-1001/i }));
 
-    expect(await screen.findByText(/share the pin with the customer manually/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/share the pin with the customer manually/i),
+    ).toBeInTheDocument();
   });
 
-  it('tells the agent when no suitable locker is available', async () => {
-    const onStore = vi
+  it('shows an empty state when there are no pending orders', () => {
+    render(<AgentView orders={[]} onStoreOrder={vi.fn()} />);
+
+    expect(screen.getByText(/no pending orders/i)).toBeInTheDocument();
+  });
+
+  it('tells the agent when no suitable locker is available for the order', async () => {
+    const onStoreOrder = vi
       .fn()
       .mockRejectedValue(
         new ApiError(
           'NO_SUITABLE_LOCKER',
-          'No suitable locker is available for a LARGE package. The package cannot be stored.',
+          'No suitable locker is available for a MEDIUM package. The package cannot be stored.',
           409,
         ),
       );
     const user = userEvent.setup();
-    render(<AgentView onStore={onStore} />);
+    render(<AgentView orders={orders} onStoreOrder={onStoreOrder} />);
 
-    await user.selectOptions(screen.getByLabelText(/package size/i), 'LARGE');
-    await user.click(screen.getByRole('button', { name: /store package/i }));
+    await user.click(screen.getByRole('button', { name: /store order ord-1002/i }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/cannot be stored/i);
   });
