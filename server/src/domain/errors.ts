@@ -55,6 +55,22 @@ export class LockerEmptyError extends DomainError {
   }
 }
 
+export class OrderNotFoundError extends DomainError {
+  readonly code = 'ORDER_NOT_FOUND';
+
+  constructor(orderId: string) {
+    super(`Order ${orderId} does not exist.`);
+  }
+}
+
+export class OrderAlreadyStoredError extends DomainError {
+  readonly code = 'ORDER_ALREADY_STORED';
+
+  constructor(orderId: string) {
+    super(`Order ${orderId} has already been stored.`);
+  }
+}
+
 export class InvalidPickupCodeError extends DomainError {
   readonly code = 'INVALID_PICKUP_CODE';
 

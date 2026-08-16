@@ -3,12 +3,15 @@ import { fileURLToPath } from 'node:url';
 import { isLockerSize } from './domain/LockerSize.js';
 import type { LockerSize } from './domain/LockerSize.js';
 import { LockerFactory } from './application/LockerFactory.js';
+import { OrderFactory } from './application/OrderFactory.js';
 import { StorePackageService } from './application/StorePackageService.js';
+import { StoreOrderService } from './application/StoreOrderService.js';
 import { RetrievePackageService } from './application/RetrievePackageService.js';
 import { LockerOverviewService } from './application/LockerOverviewService.js';
 import { SmallestSuitableLockerStrategy } from './application/policies/LockerAllocationStrategy.js';
 import { TieredStorageFeePolicy } from './application/policies/StorageFeePolicy.js';
 import { InMemoryLockerRepository } from './infrastructure/InMemoryLockerRepository.js';
+import { InMemoryOrderRepository } from './infrastructure/InMemoryOrderRepository.js';
 import { RandomPickupCodeGenerator } from './infrastructure/RandomPickupCodeGenerator.js';
 import { SystemClock } from './infrastructure/SystemClock.js';
 import { ConsoleNotifier } from './infrastructure/notifications/ConsoleNotifier.js';
@@ -41,6 +44,15 @@ function parseSeed(seed: string): Array<{ size: LockerSize; count: number }> {
     });
 }
 
+// Sample pending deliveries so the agent's work queue is demonstrable
+// out of the box (in reality these arrive from the e-commerce platform).
+const SAMPLE_ORDERS = [
+  { customerName: 'Jane Tan', customerEmail: 'jane.tan@example.com', customerPhone: '+60 12-000 0001', packageSize: 'SMALL' },
+  { customerName: 'Adam Lee', customerEmail: 'adam.lee@example.com', customerPhone: '+60 12-000 0002', packageSize: 'MEDIUM' },
+  { customerName: 'Priya Nair', customerEmail: 'priya.nair@example.com', customerPhone: '+60 12-000 0003', packageSize: 'LARGE' },
+  { customerName: 'Wei Chen', customerEmail: 'wei.chen@example.com', customerPhone: '+60 12-000 0004', packageSize: 'SMALL' },
+] as const;
+
 async function main(): Promise<void> {
   const repository = new InMemoryLockerRepository();
   const factory = new LockerFactory();
@@ -49,6 +61,12 @@ async function main(): Promise<void> {
     for (let i = 0; i < count; i += 1) {
       await repository.add(factory.create(size));
     }
+  }
+
+  const orderRepository = new InMemoryOrderRepository();
+  const orderFactory = new OrderFactory();
+  for (const sample of SAMPLE_ORDERS) {
+    await orderRepository.add(orderFactory.create(sample));
   }
 
   const clock = new SystemClock();
@@ -68,17 +86,22 @@ async function main(): Promise<void> {
       : 'Email notifications: console only (set ACS_CONNECTION_STRING and EMAIL_SENDER_ADDRESS to send real email)',
   );
 
+  const storePackageService = new StorePackageService(
+    repository,
+    new SmallestSuitableLockerStrategy(),
+    new RandomPickupCodeGenerator(),
+    clock,
+    notifier,
+  );
+
   const app = createApp(
     {
       lockerRepository: repository,
       lockerFactory: factory,
-      storePackageService: new StorePackageService(
-        repository,
-        new SmallestSuitableLockerStrategy(),
-        new RandomPickupCodeGenerator(),
-        clock,
-        notifier,
-      ),
+      orderRepository,
+      orderFactory,
+      storePackageService,
+      storeOrderService: new StoreOrderService(orderRepository, storePackageService),
       retrievePackageService: new RetrievePackageService(repository, feePolicy, clock),
       lockerOverviewService: new LockerOverviewService(repository, feePolicy, clock),
     },

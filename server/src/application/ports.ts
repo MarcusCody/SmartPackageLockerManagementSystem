@@ -1,4 +1,5 @@
 import type { Locker } from '../domain/Locker.js';
+import type { Order } from '../domain/Order.js';
 import type { Package } from '../domain/Package.js';
 import type { LockerSize } from '../domain/LockerSize.js';
 import type { LockerAllocationStrategy } from './policies/LockerAllocationStrategy.js';
@@ -31,6 +32,13 @@ export interface PickupNotifier {
  */
 export interface PickupCodeGenerator {
   generate(): string;
+}
+
+/** Persistence seam for delivery orders (the agent's work queue). */
+export interface OrderRepository {
+  add(order: Order): Promise<void>;
+  findById(id: string): Promise<Order | undefined>;
+  findPending(): Promise<Order[]>;
 }
 
 /**

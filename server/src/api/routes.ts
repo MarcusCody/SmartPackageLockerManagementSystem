@@ -2,9 +2,12 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { LOCKER_SIZES } from '../domain/LockerSize.js';
 import type { Locker } from '../domain/Locker.js';
-import type { LockerRepository } from '../application/ports.js';
+import type { Order } from '../domain/Order.js';
+import type { LockerRepository, OrderRepository } from '../application/ports.js';
 import type { LockerFactory } from '../application/LockerFactory.js';
+import type { OrderFactory } from '../application/OrderFactory.js';
 import type { StorePackageService } from '../application/StorePackageService.js';
+import type { StoreOrderService } from '../application/StoreOrderService.js';
 import type { RetrievePackageService } from '../application/RetrievePackageService.js';
 import type { LockerOverviewService } from '../application/LockerOverviewService.js';
 
@@ -20,6 +23,12 @@ const pickupSchema = z.object({
   // is enough; when provided, the locker+code pair is validated.
   lockerId: z.string().trim().min(1).optional(),
 });
+const createOrderSchema = z.object({
+  customerName: z.string().trim().min(1),
+  customerEmail: z.email(),
+  customerPhone: z.string().trim().min(7),
+  size: z.enum(LOCKER_SIZES),
+});
 
 const toLockerView = (locker: Locker) => ({
   id: locker.id,
@@ -27,10 +36,21 @@ const toLockerView = (locker: Locker) => ({
   available: locker.isAvailable,
 });
 
+const toOrderView = (order: Order) => ({
+  id: order.id,
+  customerName: order.customerName,
+  customerEmail: order.customerEmail,
+  customerPhone: order.customerPhone,
+  size: order.packageSize,
+});
+
 export interface ApiDependencies {
   lockerRepository: LockerRepository;
   lockerFactory: LockerFactory;
+  orderRepository: OrderRepository;
+  orderFactory: OrderFactory;
   storePackageService: StorePackageService;
+  storeOrderService: StoreOrderService;
   retrievePackageService: RetrievePackageService;
   lockerOverviewService: LockerOverviewService;
 }
@@ -59,6 +79,31 @@ export function apiRoutes(deps: ApiDependencies): Router {
         storedAt: locker.storedAt?.toISOString() ?? null,
       })),
     });
+  });
+
+  // The delivery agent's work queue: orders arrive from the e-commerce
+  // platform with the customer contact details already attached.
+  router.get('/orders', async (_req, res) => {
+    const pending = await deps.orderRepository.findPending();
+    res.json({ orders: pending.map(toOrderView) });
+  });
+
+  // Simulates the upstream platform registering a delivery.
+  router.post('/orders', async (req, res) => {
+    const { customerName, customerEmail, customerPhone, size } = createOrderSchema.parse(req.body);
+    const order = deps.orderFactory.create({
+      customerName,
+      customerEmail,
+      customerPhone,
+      packageSize: size,
+    });
+    await deps.orderRepository.add(order);
+    res.status(201).json({ order: toOrderView(order) });
+  });
+
+  router.post('/orders/:orderId/store', async (req, res) => {
+    const result = await deps.storeOrderService.storeOrder(req.params.orderId);
+    res.status(201).json(result);
   });
 
   router.post('/packages', async (req, res) => {
