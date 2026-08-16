@@ -8,6 +8,8 @@ import type { LockerFactory } from '../application/LockerFactory.js';
 import type { OrderFactory } from '../application/OrderFactory.js';
 import type { StorePackageService } from '../application/StorePackageService.js';
 import type { StoreOrderService } from '../application/StoreOrderService.js';
+import type { DispatchOrderService } from '../application/DispatchOrderService.js';
+import type { ReturnPackageService } from '../application/ReturnPackageService.js';
 import type { RetrievePackageService } from '../application/RetrievePackageService.js';
 import type { LockerOverviewService } from '../application/LockerOverviewService.js';
 
@@ -28,6 +30,9 @@ const createOrderSchema = z.object({
   customerEmail: z.email(),
   customerPhone: z.string().trim().min(7),
   size: z.enum(LOCKER_SIZES),
+});
+const listOrdersSchema = z.object({
+  status: z.enum(['pending', 'awaiting-dispatch']).default('pending'),
 });
 
 const toLockerView = (locker: Locker) => ({
@@ -51,6 +56,8 @@ export interface ApiDependencies {
   orderFactory: OrderFactory;
   storePackageService: StorePackageService;
   storeOrderService: StoreOrderService;
+  dispatchOrderService: DispatchOrderService;
+  returnPackageService: ReturnPackageService;
   retrievePackageService: RetrievePackageService;
   lockerOverviewService: LockerOverviewService;
 }
@@ -81,11 +88,21 @@ export function apiRoutes(deps: ApiDependencies): Router {
     });
   });
 
-  // The delivery agent's work queue: orders arrive from the e-commerce
-  // platform with the customer contact details already attached.
-  router.get('/orders', async (_req, res) => {
-    const pending = await deps.orderRepository.findPending();
-    res.json({ orders: pending.map(toOrderView) });
+  // Orders arrive from the e-commerce platform with the customer contact
+  // details already attached. ?status=pending (default) is the agent's
+  // work queue; ?status=awaiting-dispatch is the platform's outbox.
+  router.get('/orders', async (req, res) => {
+    const { status } = listOrdersSchema.parse(req.query);
+    const orders =
+      status === 'pending'
+        ? await deps.orderRepository.findPending()
+        : await deps.orderRepository.findAwaitingDispatch();
+    res.json({ orders: orders.map(toOrderView) });
+  });
+
+  router.post('/orders/:orderId/dispatch', async (req, res) => {
+    const order = await deps.dispatchOrderService.dispatch(req.params.orderId);
+    res.json({ order: toOrderView(order) });
   });
 
   // Simulates the upstream platform registering a delivery.
@@ -110,6 +127,19 @@ export function apiRoutes(deps: ApiDependencies): Router {
     const { size, customerEmail } = storePackageSchema.parse(req.body);
     const result = await deps.storePackageService.store(size, customerEmail);
     res.status(201).json(result);
+  });
+
+  // Overdue packages the agent should return to the warehouse.
+  router.get('/returns', async (_req, res) => {
+    const overdue = await deps.returnPackageService.listOverdue();
+    res.json({
+      overdue: overdue.map((entry) => ({ ...entry, storedAt: entry.storedAt.toISOString() })),
+    });
+  });
+
+  router.post('/lockers/:lockerId/return', async (req, res) => {
+    const result = await deps.returnPackageService.returnToWarehouse(req.params.lockerId);
+    res.json({ returned: true, ...result });
   });
 
   router.post('/pickups', async (req, res) => {

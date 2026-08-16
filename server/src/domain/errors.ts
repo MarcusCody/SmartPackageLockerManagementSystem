@@ -71,6 +71,32 @@ export class OrderAlreadyStoredError extends DomainError {
   }
 }
 
+export class OrderNotDispatchedError extends DomainError {
+  readonly code = 'ORDER_NOT_DISPATCHED';
+
+  constructor(orderId: string) {
+    super(`Order ${orderId} has not been dispatched to this station yet.`);
+  }
+}
+
+export class OrderAlreadyDispatchedError extends DomainError {
+  readonly code = 'ORDER_ALREADY_DISPATCHED';
+
+  constructor(orderId: string) {
+    super(`Order ${orderId} has already been dispatched.`);
+  }
+}
+
+export class PackageNotOverdueError extends DomainError {
+  readonly code = 'PACKAGE_NOT_OVERDUE';
+
+  constructor(lockerId: string, thresholdDays: number) {
+    super(
+      `The package in locker ${lockerId} is not overdue yet — returns are allowed after ${thresholdDays} days.`,
+    );
+  }
+}
+
 export class InvalidPickupCodeError extends DomainError {
   readonly code = 'INVALID_PICKUP_CODE';
 

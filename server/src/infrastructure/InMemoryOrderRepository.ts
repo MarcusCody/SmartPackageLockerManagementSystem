@@ -18,4 +18,12 @@ export class InMemoryOrderRepository implements OrderRepository {
   async findPending(): Promise<Order[]> {
     return [...this.orders.values()].filter((order) => order.isPending);
   }
+
+  async findAwaitingDispatch(): Promise<Order[]> {
+    return [...this.orders.values()].filter((order) => order.isAwaitingDispatch);
+  }
+
+  async findByPackageId(packageId: string): Promise<Order | undefined> {
+    return [...this.orders.values()].find((order) => order.packageId === packageId);
+  }
 }

@@ -40,6 +40,11 @@ export class Locker {
     return this.stored?.storedAt ?? null;
   }
 
+  /** The id of the package currently inside, if any. */
+  get storedPackageId(): string | null {
+    return this.stored?.pkg.id ?? null;
+  }
+
   canAccommodate(packageSize: LockerSize): boolean {
     return fits(this.size, packageSize);
   }
@@ -65,6 +70,19 @@ export class Locker {
     }
     if (this.stored.pickupCode !== pickupCode) {
       throw new InvalidPickupCodeError(this.id);
+    }
+    const { pkg, storedAt } = this.stored;
+    this.stored = null;
+    return { pkg, storedAt };
+  }
+
+  /**
+   * Staff override for warehouse returns: empties the locker without a
+   * PIN. The old PIN dies with it — the locker no longer holds anything.
+   */
+  removeForReturn(): { pkg: Package; storedAt: Date } {
+    if (this.stored === null) {
+      throw new LockerEmptyError(this.id);
     }
     const { pkg, storedAt } = this.stored;
     this.stored = null;

@@ -39,6 +39,9 @@ export interface OrderRepository {
   add(order: Order): Promise<void>;
   findById(id: string): Promise<Order | undefined>;
   findPending(): Promise<Order[]>;
+  findAwaitingDispatch(): Promise<Order[]>;
+  /** The order whose package was stored under this id, if any. */
+  findByPackageId(packageId: string): Promise<Order | undefined>;
 }
 
 /**

@@ -1,5 +1,9 @@
 import type { LockerSize } from '../domain/LockerSize.js';
-import { OrderAlreadyStoredError, OrderNotFoundError } from '../domain/errors.js';
+import {
+  OrderAlreadyStoredError,
+  OrderNotDispatchedError,
+  OrderNotFoundError,
+} from '../domain/errors.js';
 import type { OrderRepository } from './ports.js';
 import type { StorePackageResult, StorePackageService } from './StorePackageService.js';
 
@@ -29,12 +33,15 @@ export class StoreOrderService {
     if (order === undefined) {
       throw new OrderNotFoundError(orderId);
     }
+    if (order.isAwaitingDispatch) {
+      throw new OrderNotDispatchedError(orderId);
+    }
     if (!order.isPending) {
       throw new OrderAlreadyStoredError(orderId);
     }
 
     const stored = await this.storePackages.store(order.packageSize, order.customerEmail);
-    order.markStored();
+    order.markStored(stored.packageId);
 
     return {
       ...stored,

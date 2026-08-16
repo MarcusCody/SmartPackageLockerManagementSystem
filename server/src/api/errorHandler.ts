@@ -6,8 +6,11 @@ import {
   LockerEmptyError,
   LockerNotFoundError,
   NoSuitableLockerError,
+  OrderAlreadyDispatchedError,
   OrderAlreadyStoredError,
+  OrderNotDispatchedError,
   OrderNotFoundError,
+  PackageNotOverdueError,
 } from '../domain/errors.js';
 
 function statusFor(error: DomainError): number {
@@ -15,8 +18,11 @@ function statusFor(error: DomainError): number {
   if (error instanceof OrderNotFoundError) return 404;
   if (error instanceof NoSuitableLockerError) return 409;
   if (error instanceof OrderAlreadyStoredError) return 409;
+  if (error instanceof OrderAlreadyDispatchedError) return 409;
+  if (error instanceof OrderNotDispatchedError) return 409;
   if (error instanceof InvalidPickupCodeError) return 422;
   if (error instanceof LockerEmptyError) return 422;
+  if (error instanceof PackageNotOverdueError) return 422;
   return 422;
 }
 
