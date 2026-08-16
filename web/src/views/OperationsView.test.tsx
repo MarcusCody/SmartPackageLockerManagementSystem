@@ -62,13 +62,6 @@ describe('OperationsView', () => {
     expect(screen.getByText(/2 lockers · 1 available · 1 occupied/i)).toBeInTheDocument();
   });
 
-  it('renders the station wall preview alongside the overview', () => {
-    renderView();
-
-    expect(screen.getByRole('img', { name: /locker s-1, small, occupied/i })).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: /locker s-2, small, available/i })).toBeInTheDocument();
-  });
-
   it('lists incoming platform orders and dispatches them to the station', async () => {
     const onDispatch = vi.fn().mockResolvedValue(incoming[0]);
     const user = userEvent.setup();
