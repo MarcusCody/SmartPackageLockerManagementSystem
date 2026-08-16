@@ -5,7 +5,8 @@ import type { Locker } from '../domain/Locker.js';
 import type { Order } from '../domain/Order.js';
 import type { LockerRepository, OrderRepository } from '../application/ports.js';
 import type { LockerFactory } from '../application/LockerFactory.js';
-import type { OrderFactory } from '../application/OrderFactory.js';
+import type { RegisterOrderService } from '../application/RegisterOrderService.js';
+import type { MockOrderService } from '../application/MockOrderService.js';
 import type { StorePackageService } from '../application/StorePackageService.js';
 import type { StoreOrderService } from '../application/StoreOrderService.js';
 import type { DispatchOrderService } from '../application/DispatchOrderService.js';
@@ -53,7 +54,8 @@ export interface ApiDependencies {
   lockerRepository: LockerRepository;
   lockerFactory: LockerFactory;
   orderRepository: OrderRepository;
-  orderFactory: OrderFactory;
+  registerOrderService: RegisterOrderService;
+  mockOrderService: MockOrderService;
   storePackageService: StorePackageService;
   storeOrderService: StoreOrderService;
   dispatchOrderService: DispatchOrderService;
@@ -105,16 +107,22 @@ export function apiRoutes(deps: ApiDependencies): Router {
     res.json({ order: toOrderView(order) });
   });
 
-  // Simulates the upstream platform registering a delivery.
+  // The upstream platform registering a delivery — refused when the
+  // station has no capacity for the size (see StationCapacityPolicy).
   router.post('/orders', async (req, res) => {
     const { customerName, customerEmail, customerPhone, size } = createOrderSchema.parse(req.body);
-    const order = deps.orderFactory.create({
+    const order = await deps.registerOrderService.register({
       customerName,
       customerEmail,
       customerPhone,
       packageSize: size,
     });
-    await deps.orderRepository.add(order);
+    res.status(201).json({ order: toOrderView(order) });
+  });
+
+  // Simulates the platform pushing a random new delivery to this station.
+  router.post('/orders/mock', async (_req, res) => {
+    const order = await deps.mockOrderService.mockIncomingOrder();
     res.status(201).json({ order: toOrderView(order) });
   });
 

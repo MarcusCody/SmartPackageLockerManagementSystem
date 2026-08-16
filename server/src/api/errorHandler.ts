@@ -11,6 +11,7 @@ import {
   OrderNotDispatchedError,
   OrderNotFoundError,
   PackageNotOverdueError,
+  StationAtCapacityError,
 } from '../domain/errors.js';
 
 function statusFor(error: DomainError): number {
@@ -20,6 +21,7 @@ function statusFor(error: DomainError): number {
   if (error instanceof OrderAlreadyStoredError) return 409;
   if (error instanceof OrderAlreadyDispatchedError) return 409;
   if (error instanceof OrderNotDispatchedError) return 409;
+  if (error instanceof StationAtCapacityError) return 409;
   if (error instanceof InvalidPickupCodeError) return 422;
   if (error instanceof LockerEmptyError) return 422;
   if (error instanceof PackageNotOverdueError) return 422;

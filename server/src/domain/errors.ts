@@ -87,6 +87,18 @@ export class OrderAlreadyDispatchedError extends DomainError {
   }
 }
 
+export class StationAtCapacityError extends DomainError {
+  readonly code = 'STATION_AT_CAPACITY';
+
+  constructor(size?: LockerSize) {
+    super(
+      size === undefined
+        ? 'The station cannot accept new orders right now: every locker size is at capacity, counting free lockers and undelivered orders.'
+        : `The station cannot accept a ${size} order right now: no locker of that size (or larger) is free once undelivered orders are counted.`,
+    );
+  }
+}
+
 export class PackageNotOverdueError extends DomainError {
   readonly code = 'PACKAGE_NOT_OVERDUE';
 

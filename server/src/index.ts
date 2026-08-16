@@ -6,6 +6,8 @@ import { LockerFactory } from './application/LockerFactory.js';
 import { OrderFactory } from './application/OrderFactory.js';
 import { StorePackageService } from './application/StorePackageService.js';
 import { StoreOrderService } from './application/StoreOrderService.js';
+import { RegisterOrderService } from './application/RegisterOrderService.js';
+import { MockOrderService } from './application/MockOrderService.js';
 import { DispatchOrderService } from './application/DispatchOrderService.js';
 import { ReturnPackageService } from './application/ReturnPackageService.js';
 import { RetrievePackageService } from './application/RetrievePackageService.js';
@@ -87,6 +89,7 @@ async function main(): Promise<void> {
 
   const clock = new SystemClock();
   const feePolicy = new TieredStorageFeePolicy(STORAGE_FEE_SCHEDULE);
+  const registerOrderService = new RegisterOrderService(orderRepository, repository, orderFactory);
 
   // Real email only when ACS is configured; otherwise emails render to
   // the console so the flow works with zero external dependencies.
@@ -115,7 +118,8 @@ async function main(): Promise<void> {
       lockerRepository: repository,
       lockerFactory: factory,
       orderRepository,
-      orderFactory,
+      registerOrderService,
+      mockOrderService: new MockOrderService(repository, orderRepository, registerOrderService),
       storePackageService,
       storeOrderService: new StoreOrderService(orderRepository, storePackageService),
       dispatchOrderService: new DispatchOrderService(orderRepository),

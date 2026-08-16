@@ -7,6 +7,8 @@ import { ReturnPackageService } from '../../src/application/ReturnPackageService
 import { LockerOverviewService } from '../../src/application/LockerOverviewService.js';
 import { LockerFactory } from '../../src/application/LockerFactory.js';
 import { OrderFactory } from '../../src/application/OrderFactory.js';
+import { RegisterOrderService } from '../../src/application/RegisterOrderService.js';
+import { MockOrderService } from '../../src/application/MockOrderService.js';
 import { InMemoryOrderRepository } from '../../src/infrastructure/InMemoryOrderRepository.js';
 import { SmallestSuitableLockerStrategy } from '../../src/application/policies/LockerAllocationStrategy.js';
 import { TieredStorageFeePolicy } from '../../src/application/policies/StorageFeePolicy.js';
@@ -42,11 +44,17 @@ export async function buildTestApp(
     clock,
     notifier,
   );
+  const registerOrderService = new RegisterOrderService(
+    orderRepository,
+    repository,
+    new OrderFactory(),
+  );
   const app = createApp({
     lockerRepository: repository,
     lockerFactory: new LockerFactory(),
     orderRepository,
-    orderFactory: new OrderFactory(),
+    registerOrderService,
+    mockOrderService: new MockOrderService(repository, orderRepository, registerOrderService),
     storePackageService,
     storeOrderService: new StoreOrderService(orderRepository, storePackageService),
     dispatchOrderService: new DispatchOrderService(orderRepository),
