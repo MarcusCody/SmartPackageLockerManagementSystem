@@ -12,11 +12,13 @@
   "dependencies": {
     "@azure/communication-email": "^1.1.0",
     "express": "^5.2.1",
+    "pg": "^8.23.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^26.2.0",
+    "@types/pg": "^8.21.0",
     "@types/supertest": "^7.2.1",
     "@vitest/coverage-v8": "^4.1.10",
     "supertest": "^7.2.2",

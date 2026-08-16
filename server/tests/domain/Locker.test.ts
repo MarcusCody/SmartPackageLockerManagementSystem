@@ -64,6 +64,27 @@ describe('Locker', () => {
     expect(locker.isAvailable).toBe(true);
   });
 
+  describe('restore (rehydration from persistence)', () => {
+    it('restores an occupied locker with its package, PIN and storage time', () => {
+      const locker = Locker.restore('S-1', 'SMALL', {
+        pkg: { id: 'pkg-1', size: 'SMALL' },
+        pickupCode: '042731',
+        storedAt: NOW,
+      });
+
+      expect(locker.isAvailable).toBe(false);
+      expect(locker.activePickupCode).toBe('042731');
+      expect(locker.storedPackageId).toBe('pkg-1');
+      expect(locker.storedSince).toEqual(NOW);
+    });
+
+    it('restores an empty locker', () => {
+      const locker = Locker.restore('S-1', 'SMALL');
+
+      expect(locker.isAvailable).toBe(true);
+    });
+  });
+
   describe('retrieve', () => {
     it('returns the stored package and its storage time for the matching pickup code', () => {
       const locker = new Locker('S-1', 'SMALL');

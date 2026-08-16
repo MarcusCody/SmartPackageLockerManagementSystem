@@ -83,11 +83,34 @@ describe('Order lifecycle', () => {
   });
 });
 
+describe('Order.restore (rehydration from persistence)', () => {
+  it('restores a stored order with its package linkage', () => {
+    const order = Order.restore('ORD-1001', details, 'STORED', 'pkg-1');
+
+    expect(order.status).toBe('STORED');
+    expect(order.packageId).toBe('pkg-1');
+  });
+
+  it('restores an awaiting order that can then be dispatched normally', () => {
+    const order = Order.restore('ORD-1001', details, 'AWAITING_DISPATCH', null);
+
+    order.dispatch();
+
+    expect(order.isPending).toBe(true);
+  });
+});
+
 describe('OrderFactory', () => {
   it('assigns sequential order ids', () => {
     const factory = new OrderFactory();
 
     expect(factory.create(details).id).toBe('ORD-1001');
     expect(factory.create(details).id).toBe('ORD-1002');
+  });
+
+  it('can resume from a persisted sequence position', () => {
+    const factory = new OrderFactory(1009);
+
+    expect(factory.create(details).id).toBe('ORD-1010');
   });
 });
