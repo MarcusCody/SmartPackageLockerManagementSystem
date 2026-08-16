@@ -7,7 +7,7 @@ import { SmallestSuitableLockerStrategy } from '../../src/application/policies/L
 import { TieredStorageFeePolicy } from '../../src/application/policies/StorageFeePolicy.js';
 import { InMemoryLockerRepository } from '../../src/infrastructure/InMemoryLockerRepository.js';
 import { createApp } from '../../src/api/server.js';
-import { FixedClock, SequenceCodeGenerator } from './stubs.js';
+import { FixedClock, RecordingNotifier, SequenceCodeGenerator } from './stubs.js';
 
 export const TEST_NOW = new Date('2026-08-15T10:00:00Z');
 
@@ -21,6 +21,7 @@ export async function buildTestApp(
     await repository.add(locker);
   }
   const clock = new FixedClock(TEST_NOW);
+  const notifier = new RecordingNotifier();
   // Spec-example schedule so integration tests exercise non-zero charges.
   const feePolicy = new TieredStorageFeePolicy([
     { upToDay: 5, ratePerDay: 10 },
@@ -35,9 +36,10 @@ export async function buildTestApp(
       new SmallestSuitableLockerStrategy(),
       new SequenceCodeGenerator(codes),
       clock,
+      notifier,
     ),
     retrievePackageService: new RetrievePackageService(repository, feePolicy, clock),
     lockerOverviewService: new LockerOverviewService(repository, feePolicy, clock),
   });
-  return { app, clock, repository };
+  return { app, clock, repository, notifier };
 }

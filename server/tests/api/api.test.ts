@@ -61,7 +61,36 @@ describe('REST API', () => {
         lockerId: 'M-1',
         pickupCode: 'CODE01',
         packageId: expect.any(String),
+        notification: 'none',
       });
+    });
+
+    it('emails the pickup PIN when a customer email is provided', async () => {
+      const { app, notifier } = await buildTestApp([new Locker('S-1', 'SMALL')]);
+
+      const response = await request(app)
+        .post('/api/packages')
+        .send({ size: 'SMALL', customerEmail: 'jane@example.com' });
+
+      expect(response.status).toBe(201);
+      expect(response.body.notification).toBe('sent');
+      expect(notifier.sent).toHaveLength(1);
+      expect(notifier.sent[0]).toMatchObject({
+        to: 'jane@example.com',
+        lockerId: 'S-1',
+        pickupCode: response.body.pickupCode,
+      });
+    });
+
+    it('rejects an invalid customer email', async () => {
+      const { app } = await buildTestApp([new Locker('S-1', 'SMALL')]);
+
+      const response = await request(app)
+        .post('/api/packages')
+        .send({ size: 'SMALL', customerEmail: 'not-an-email' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error.code).toBe('VALIDATION_ERROR');
     });
 
     it('returns 409 with a clear message when no suitable locker is available', async () => {

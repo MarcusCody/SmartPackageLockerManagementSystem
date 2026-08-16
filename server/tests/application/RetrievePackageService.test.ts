@@ -10,7 +10,7 @@ import { RetrievePackageService } from '../../src/application/RetrievePackageSer
 import { SmallestSuitableLockerStrategy } from '../../src/application/policies/LockerAllocationStrategy.js';
 import { TieredStorageFeePolicy } from '../../src/application/policies/StorageFeePolicy.js';
 import { InMemoryLockerRepository } from '../../src/infrastructure/InMemoryLockerRepository.js';
-import { FixedClock, SequenceCodeGenerator } from '../helpers/stubs.js';
+import { FixedClock, RecordingNotifier, SequenceCodeGenerator } from '../helpers/stubs.js';
 
 const NOW = new Date('2026-08-15T10:00:00Z');
 
@@ -25,6 +25,7 @@ async function setup(lockers: Locker[] = [new Locker('S-1', 'SMALL')]) {
     new SmallestSuitableLockerStrategy(),
     new SequenceCodeGenerator(['CODE01', 'CODE02', 'CODE03']),
     clock,
+    new RecordingNotifier(),
   );
   // The spec-example schedule (10/day days 1-5, 20/day days 6-10, 30/day
   // beyond) keeps the charge expectations below meaningful.

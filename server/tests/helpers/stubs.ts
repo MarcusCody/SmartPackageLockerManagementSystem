@@ -1,4 +1,9 @@
-import type { Clock, PickupCodeGenerator } from '../../src/application/ports.js';
+import type {
+  Clock,
+  PickupCodeGenerator,
+  PickupNotification,
+  PickupNotifier,
+} from '../../src/application/ports.js';
 
 /** Deterministic clock for tests; can be advanced to simulate elapsed storage time. */
 export class FixedClock implements Clock {
@@ -14,6 +19,25 @@ export class FixedClock implements Clock {
 
   advanceHours(hours: number): void {
     this.current = new Date(this.current.getTime() + hours * 60 * 60 * 1000);
+  }
+}
+
+/** Records every notification instead of sending anything. */
+export class RecordingNotifier implements PickupNotifier {
+  readonly sent: PickupNotification[] = [];
+
+  async sendPickupCode(notification: PickupNotification): Promise<void> {
+    this.sent.push(notification);
+  }
+}
+
+/** Simulates a provider outage: records the attempt, then throws. */
+export class FailingNotifier implements PickupNotifier {
+  readonly attempts: PickupNotification[] = [];
+
+  async sendPickupCode(notification: PickupNotification): Promise<void> {
+    this.attempts.push(notification);
+    throw new Error('email provider unavailable');
   }
 }
 
