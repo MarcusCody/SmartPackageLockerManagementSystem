@@ -76,7 +76,12 @@ export function CustomerView({ onRetrieve }: CustomerViewProps) {
             <span aria-hidden="true">📦</span>
           </h3>
           <p>
-            Storage charge: <strong className="highlight">{result.pickup.storageCharge} units</strong>
+            Storage charge:{' '}
+            <strong className="highlight">
+              {result.pickup.storageCharge === 0
+                ? 'Free — collected within the grace period'
+                : `RM${result.pickup.storageCharge}`}
+            </strong>
           </p>
           <p className="hint">
             Stored {new Date(result.pickup.storedAt).toLocaleString()} · Collected{' '}

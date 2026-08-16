@@ -35,7 +35,7 @@ export function AdminLockerBoard({ lockers }: { lockers: AdminLockerView[] }) {
                   Since {new Date(locker.storedAt).toLocaleString()}
                 </span>
               )}
-              <span className="locker-meta">Accrued {locker.accruedCharge} units</span>
+              <span className="locker-meta">Accrued RM{locker.accruedCharge}</span>
             </>
           )}
         </li>
