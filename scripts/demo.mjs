@@ -36,17 +36,17 @@ try {
   );
 
   show(
-    'Customer: wrong pickup code is rejected, package stays put',
-    await call('POST', '/api/pickups', { lockerId: stored.json.lockerId, pickupCode: 'WRONG1' }),
+    'Customer: a PIN that matches no package is rejected',
+    await call('POST', '/api/pickups', { pickupCode: '000000' }),
   );
 
-  const pickup = { lockerId: stored.json.lockerId, pickupCode: stored.json.pickupCode };
+  const pickup = { pickupCode: stored.json.pickupCode };
   show(
-    'Customer: correct code opens the locker; charge is RM0 within the 5-day grace period',
+    'Customer: the PIN alone opens the right locker (no locker id needed); RM0 within the grace period',
     await call('POST', '/api/pickups', pickup),
   );
 
-  show('Replaying the used code fails — the locker is empty again', await call('POST', '/api/pickups', pickup));
+  show('Replaying the used PIN fails — no package matches it anymore', await call('POST', '/api/pickups', pickup));
 
   console.log('\n▸ Fill every LARGE-capable locker, then one more store must be refused');
   let last;

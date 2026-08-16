@@ -4,7 +4,7 @@ A locker station where **delivery agents store packages** and **customers retrie
 
 - **Server:** TypeScript (strict), Node 20, Express 5, zod — domain-driven, dependency-injected, in-memory storage behind a repository port
 - **UI:** React 19 + Vite + react-router — a thin client with a route per role (`/delivery`, `/customer`, `/operation`) over the REST API
-- **Tests:** Vitest — 80 tests: domain and application units, supertest API integration, concurrency race/stress tests, and React Testing Library flows
+- **Tests:** Vitest — 88 tests: domain and application units, supertest API integration, concurrency race/stress tests, and React Testing Library flows
 
 ## Quick start
 
@@ -33,7 +33,7 @@ Configuration: `PORT` (3000) and `SEED_LOCKERS` (`SMALL:3,MEDIUM:3,LARGE:2`) via
 
 ## How it works
 
-Delivery agent stores a package → the system assigns the **smallest available locker that fits** and returns the locker id + a unique 6-digit pickup PIN (assumed to reach the customer via SMS/email, out of scope). Customer enters locker id + PIN → the locker opens, the package is released, the **storage charge** for the time it sat there is returned, and the locker becomes available again.
+Delivery agent stores a package → the system assigns the **smallest available locker that fits** and returns the locker id + a unique 6-digit pickup PIN (assumed to reach the customer via SMS/email, out of scope). Customer enters the PIN → the system finds and opens the right locker (PINs are unique among active packages, so the locker id is optional — when provided, the pair is validated), the package is released, the **storage charge** is returned, and the locker becomes available again.
 
 ## Architecture
 
@@ -87,7 +87,7 @@ There is deliberately **no DI container and no ORM** — constructor injection a
 | `POST /api/lockers`  | `{size}`                   | `201 {locker}`                                                  | `400` invalid size                         |
 | `GET /api/admin/lockers` | —                      | `200` — adds `pickupCode`, `storedAt`, `accruedCharge` per occupied locker | — (internal: would sit behind operator auth in production) |
 | `POST /api/packages` | `{size}`                   | `201 {lockerId, pickupCode, packageId}`                         | `400` invalid size · `409` no suitable locker |
-| `POST /api/pickups`  | `{lockerId, pickupCode}`   | `200 {opened, package, storedAt, retrievedAt, storageCharge}`   | `400` missing fields · `404` unknown locker · `422` wrong code / empty locker |
+| `POST /api/pickups`  | `{pickupCode, lockerId?}`  | `200 {opened, lockerId, package, storedAt, retrievedAt, storageCharge}` | `400` missing PIN · `404` unknown locker · `422` unmatched/wrong PIN, empty locker |
 
 All errors share one shape: `{"error": {"code": "NO_SUITABLE_LOCKER", "message": "..."}}`.
 
@@ -96,8 +96,8 @@ All errors share one shape: `{"error": {"code": "NO_SUITABLE_LOCKER", "message":
 One route per role (no authentication — roles are presentation-level, see assumptions):
 
 - **`/delivery`** — choose a package size, store it, get the locker id + pickup PIN with a copy button. Shows the availability board so the agent can see capacity.
-- **`/customer`** — enter locker id + 6-digit PIN; on success the locker opens and the storage charge is shown; failures get friendly, specific copy. **No locker board here** — which lockers exist or are occupied is not the customer's business.
-- **`/operation`** (internal) — add lockers, see capacity counts, and a full locker overview where each occupied locker shows its **pickup PIN, storage time and the charge accrued so far**. Locker creation belongs to the station operator, not the delivery agent, so it lives here.
+- **`/customer`** — enter the 6-digit PIN (locker id optional); the system opens the right locker, names it, and shows the storage charge; failures get friendly, specific copy. **No locker board here** — which lockers exist or are occupied is not the customer's business.
+- **`/operation`** (internal) — add lockers, see capacity counts, a **station wall preview** (cabinet columns of doors sized by locker size, occupied doors showing a parcel), and the locker overview where each occupied locker shows its **pickup PIN, storage time and the charge accrued so far**. Locker creation belongs to the station operator, not the delivery agent, so it lives here.
 
 Accessibility: labelled controls, keyboard-operable forms, `alert`/`status` live regions, visible focus outlines.
 
@@ -137,7 +137,7 @@ Reservation is **atomic at the repository boundary**: `findAndReserve` selects a
 | L1: create lockers / view list with availability | `POST/GET /api/lockers`, Operations view + board |
 | L1: "cannot be stored" when nothing fits | `NoSuitableLockerError` → 409 |
 | L1: return code + locker identifier | `POST /api/packages` response |
-| L2: retrieve via locker id + code; locker opens and frees | `POST /api/pickups`, Customer view |
+| L2: retrieve via locker id + code; locker opens and frees | `POST /api/pickups` validates the pair when locker id is given; PIN-only also works since PINs are unique among active packages |
 | L2: invalid scenarios | wrong code / wrong locker / empty / unknown / replayed code → 4xx tests |
 | L3: record storage time; tiered charge; charge with pickup confirmation | `Clock`, `TieredStorageFeePolicy`, pickup response |
 | L4 (optional): no double assignment; excess requests refused; availability stays correct | `findAndReserve` + race/stress tests |
