@@ -4,7 +4,7 @@ A locker station where **delivery agents store packages** and **customers retrie
 
 - **Server:** TypeScript (strict), Node 20, Express 5, zod — domain-driven, dependency-injected, in-memory storage behind a repository port
 - **UI:** React 19 + Vite + react-router — a thin client with a route per role (`/delivery`, `/customer`, `/operation`) over the REST API
-- **Tests:** Vitest — 79 tests: domain and application units, supertest API integration, concurrency race/stress tests, and React Testing Library flows
+- **Tests:** Vitest — 80 tests: domain and application units, supertest API integration, concurrency race/stress tests, and React Testing Library flows
 
 ## Quick start
 
@@ -29,7 +29,7 @@ npm run demo           # scripted API walkthrough (server must be running)
 npm run lint           # ESLint over both workspaces
 ```
 
-Configuration (env vars, all optional): `PORT` (3000), `STORAGE_RATE_PER_DAY` (10 — the "X" in the fee tiers), `SEED_LOCKERS` (`SMALL:3,MEDIUM:3,LARGE:2`).
+Configuration: `PORT` (3000) and `SEED_LOCKERS` (`SMALL:3,MEDIUM:3,LARGE:2`) via env vars; the storage fee schedule is configured at the composition root ([server/src/index.ts](server/src/index.ts)).
 
 ## How it works
 
@@ -103,9 +103,17 @@ Accessibility: labelled controls, keyboard-operable forms, `alert`/`status` live
 
 ## Storage charges (Level 3)
 
-The spec's example: X units/day for days 1–5, 2X for days 6–10, 3X from day 11, where **a day is each started 24-hour window from the moment of storage**. So a package retrieved after 2 hours is in day 1 and owes X; after exactly 24h it still owes X; at 24h + 1s it enters day 2.
+Pricing is a configurable schedule of day bands on `TieredStorageFeePolicy`, where **a day is each started 24-hour window from the moment of storage** (a package retrieved after 2 hours is in day 1; at 24h + 1s it enters day 2). The deployed schedule, in RM:
 
-Interpretation note: the phrase "packages are expected to be picked up within a reasonable time" *could* be read as a grace period before charging starts. The example ("X/day for the **first** 5 days") reads more literally as day 1 being charged, so the default is `freeDays: 0` — but the grace reading is a one-line config change on `TieredStorageFeePolicy`, and both are covered by tests.
+| Days (from storage) | Rate                     |
+| ------------------- | ------------------------ |
+| 1–5                 | Free — grace period      |
+| 6–7                 | RM1/day                  |
+| 8+                  | RM2/day                  |
+
+Example: collected on day 6 → RM1; collected on day 12 → RM2 (days 6–7) + RM10 (days 8–12) = RM12.
+
+The challenge PDF's example pricing (X/day for the first 5 days, 2X for the next 5, 3X beyond) is deliberately *not* hardcoded — the spec says the fee "may follow a tiered pricing rule such as" that example. It remains one configuration away and is covered by its own tests, so switching schedules is a change to the composition root, not to code.
 
 The charge is visible in two places: the customer sees the final amount with the pickup confirmation, and `/operation` shows each occupied locker's **live accrued charge** (what the customer would owe if they picked up right now), computed by the same fee policy.
 
@@ -136,7 +144,7 @@ Reservation is **atomic at the repository boundary**: `findAndReserve` selects a
 
 ## Assumptions
 
-1. **Fee day counting** — `ceil(elapsed / 24h)`, minimum 1 day, day 1 charged (see Level 3 section; grace period configurable).
+1. **Fee day counting** — `ceil(elapsed / 24h)`, minimum 1 day: each started 24h window counts. Pricing is a band schedule set at the composition root (currently 5 free grace days, RM1/day for days 6–7, RM2/day from day 8, integer RM amounts); the PDF's X/2X/3X example is an alternative configuration covered by tests (see Level 3 section).
 2. **Pickup codes** — keypad-friendly 6-digit numeric PINs (leading zeros preserved); unique among *active* packages, enforced with a bounded retry against active codes. In a multi-instance deployment this becomes a DB unique constraint.
 3. **Package size is a category** (S/M/L) matching locker sizes, not physical dimensions.
 4. **Storage is in-memory** per the challenge scope; state resets on restart.

@@ -41,7 +41,10 @@ try {
   );
 
   const pickup = { lockerId: stored.json.lockerId, pickupCode: stored.json.pickupCode };
-  show('Customer: correct code opens the locker and returns the charge', await call('POST', '/api/pickups', pickup));
+  show(
+    'Customer: correct code opens the locker; charge is RM0 within the 5-day grace period',
+    await call('POST', '/api/pickups', pickup),
+  );
 
   show('Replaying the used code fails — the locker is empty again', await call('POST', '/api/pickups', pickup));
 
