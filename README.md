@@ -189,6 +189,7 @@ EMAIL_SENDER_ADDRESS="DoNotReply@<guid>.azurecomm.net"
 
 **Design decisions:**
 
+- **Demo redirect**: `EMAIL_REDIRECT_ALL_TO=<inbox>` decorates the active notifier so every email — regardless of the (sample) customer address on the order — is delivered to one real inbox. The live deployment redirects to the author's inbox; the original recipient is logged.
 - **A notification failure never fails the store** — the locker is already reserved by then. The API instead reports `notification: "sent" | "failed" | "none"`, and the UI tells the agent to share the PIN manually on failure.
 - Email copy lives in a pure, tested builder (`application/pickupEmail.ts`); the ACS adapter is deliberately thin and untested against the real API — the port contract is tested with stubs.
 - In production this would be a queued event (store → queue → notification worker) rather than an inline send; inline keeps the take-home honest and simple.
