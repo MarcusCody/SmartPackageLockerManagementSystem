@@ -25,8 +25,14 @@ try {
 
   show('Operations: add a MEDIUM locker', await call('POST', '/api/lockers', { size: 'MEDIUM' }));
 
-  const stored = await call('POST', '/api/packages', { size: 'SMALL' });
-  show('Agent: store a SMALL package (smallest suitable locker wins)', stored);
+  const stored = await call('POST', '/api/packages', {
+    size: 'SMALL',
+    customerEmail: 'customer@example.com',
+  });
+  show(
+    'Agent: store a SMALL package with a customer email — the PIN is emailed (see the server console; notification field reports it)',
+    stored,
+  );
 
   show('Board now shows that locker occupied', await call('GET', '/api/lockers'));
 

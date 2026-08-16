@@ -4,7 +4,7 @@ A locker station where **delivery agents store packages** and **customers retrie
 
 - **Server:** TypeScript (strict), Node 20, Express 5, zod — domain-driven, dependency-injected, in-memory storage behind a repository port
 - **UI:** React 19 + Vite + react-router — a thin client with a route per role (`/delivery`, `/customer`, `/operation`) over the REST API
-- **Tests:** Vitest — 88 tests: domain and application units, supertest API integration, concurrency race/stress tests, and React Testing Library flows
+- **Tests:** Vitest — 98 tests: domain and application units, supertest API integration, concurrency race/stress tests, and React Testing Library flows
 
 ## Quick start
 
@@ -29,7 +29,7 @@ npm run demo           # scripted API walkthrough (server must be running)
 npm run lint           # ESLint over both workspaces
 ```
 
-Configuration: `PORT` (3000) and `SEED_LOCKERS` (`SMALL:3,MEDIUM:3,LARGE:2`) via env vars; the storage fee schedule is configured at the composition root ([server/src/index.ts](server/src/index.ts)).
+Configuration: `PORT` (3000) and `SEED_LOCKERS` (`SMALL:3,MEDIUM:3,LARGE:2`) via env vars; the storage fee schedule is configured at the composition root ([server/src/index.ts](server/src/index.ts)). For real email, set `ACS_CONNECTION_STRING` and `EMAIL_SENDER_ADDRESS` (see **Email notifications**) — without them, emails render to the server console.
 
 ## How it works
 
@@ -48,15 +48,20 @@ server/src/
 ├── application/       # use cases + policies, everything injected
 │   ├── StorePackageService.ts
 │   ├── RetrievePackageService.ts
+│   ├── LockerOverviewService.ts         # operations: PINs + accrued charges
 │   ├── LockerFactory.ts     # human-friendly sequential ids: S-1, M-2, ...
-│   ├── ports.ts             # Clock, PickupCodeGenerator, LockerRepository
+│   ├── pickupEmail.ts       # pure, tested email content builder
+│   ├── ports.ts             # Clock, PickupCodeGenerator, PickupNotifier, LockerRepository
 │   └── policies/
 │       ├── LockerAllocationStrategy.ts  # SmallestSuitableLockerStrategy
 │       └── StorageFeePolicy.ts          # TieredStorageFeePolicy
 ├── infrastructure/    # adapters for the ports
 │   ├── InMemoryLockerRepository.ts      # incl. atomic findAndReserve (Level 4)
-│   ├── RandomPickupCodeGenerator.ts     # crypto-random, ambiguity-free alphabet
-│   └── SystemClock.ts
+│   ├── RandomPickupCodeGenerator.ts     # keypad-friendly 6-digit PINs
+│   ├── SystemClock.ts
+│   └── notifications/
+│       ├── AcsEmailNotifier.ts          # Azure Communication Services Email
+│       └── ConsoleNotifier.ts           # default: renders emails to stdout
 ├── api/               # Express adapter: zod validation + error mapping
 │   ├── routes.ts
 │   ├── errorHandler.ts
@@ -75,6 +80,7 @@ web/src/               # thin client — zero business rules
 - `StorageFeePolicy` — the spec says the fee "may follow" a tiered rule; rate, tier boundaries and grace period are configuration, not code.
 - `LockerAllocationStrategy` — the spec asks for a design that "can be extended easily"; smallest-suitable is the current rule, not the only conceivable one.
 - `PickupCodeGenerator` — real codes are crypto-random; tests use a scripted sequence to prove the uniqueness-retry logic.
+- `PickupNotifier` — channel-agnostic notification seam: ACS email in production, console in dev, and an SMS adapter would implement the same port (see **Email notifications**).
 - `LockerRepository` — the persistence seam. In-memory today; a database adapter implements the same port without touching domain or services.
 
 There is deliberately **no DI container and no ORM** — constructor injection at the composition root is all a codebase of this size needs.
@@ -86,7 +92,7 @@ There is deliberately **no DI container and no ORM** — constructor injection a
 | `GET /api/lockers`   | —                          | `200 {lockers: [{id, size, available}]}`                        | —                                          |
 | `POST /api/lockers`  | `{size}`                   | `201 {locker}`                                                  | `400` invalid size                         |
 | `GET /api/admin/lockers` | —                      | `200` — adds `pickupCode`, `storedAt`, `accruedCharge` per occupied locker | — (internal: would sit behind operator auth in production) |
-| `POST /api/packages` | `{size}`                   | `201 {lockerId, pickupCode, packageId}`                         | `400` invalid size · `409` no suitable locker |
+| `POST /api/packages` | `{size, customerEmail?}`   | `201 {lockerId, pickupCode, packageId, notification}`           | `400` invalid size/email · `409` no suitable locker |
 | `POST /api/pickups`  | `{pickupCode, lockerId?}`  | `200 {opened, lockerId, package, storedAt, retrievedAt, storageCharge}` | `400` missing PIN · `404` unknown locker · `422` unmatched/wrong PIN, empty locker |
 
 All errors share one shape: `{"error": {"code": "NO_SUITABLE_LOCKER", "message": "..."}}`.
@@ -123,6 +129,33 @@ Reservation is **atomic at the repository boundary**: `findAndReserve` selects a
 
 **Honest scope:** this guarantee holds within one Node process, which is also why the app must run as a single instance while storage is in-memory. Scaling out would fork the locker state — the fix is a database adapter for `LockerRepository` using a transaction / unique constraint / optimistic locking, which is exactly the seam `findAndReserve` marks.
 
+## Email notifications
+
+When the delivery agent provides an optional customer email, the pickup PIN is emailed via the `PickupNotifier` port. Two adapters exist:
+
+- **`ConsoleNotifier`** (default) — renders the email to the server console, so the repo runs and demos with zero external dependencies or secrets.
+- **`AcsEmailNotifier`** — sends real email through **Azure Communication Services**, selected automatically when both env vars are set:
+
+```bash
+ACS_CONNECTION_STRING="endpoint=https://<your-resource>.communication.azure.com/;accesskey=<key>"
+EMAIL_SENDER_ADDRESS="DoNotReply@<guid>.azurecomm.net"
+```
+
+**Design decisions:**
+
+- **A notification failure never fails the store** — the locker is already reserved by then. The API instead reports `notification: "sent" | "failed" | "none"`, and the UI tells the agent to share the PIN manually on failure.
+- Email copy lives in a pure, tested builder (`application/pickupEmail.ts`); the ACS adapter is deliberately thin and untested against the real API — the port contract is tested with stubs.
+- In production this would be a queued event (store → queue → notification worker) rather than an inline send; inline keeps the take-home honest and simple.
+
+**Azure setup (works on an Azure for Students subscription):**
+
+1. Create a **Communication Services** resource and an **Email Communication Services** resource (same resource group).
+2. In the Email resource, add a free **Azure managed domain** (no DNS or custom domain needed), then connect that domain to the Communication Services resource.
+3. Copy the connection string (Communication Services → Keys) and the MailFrom address (the `DoNotReply@…azurecomm.net` one), and set the two env vars above (on App Service: Configuration → Application settings).
+4. Cost: roughly US$0.00025 per email plus a tiny data fee — negligible against student credit. Managed domains have modest sending limits, fine for a demo.
+
+**Why email and not SMS:** ACS SMS requires acquiring a phone number, which Microsoft does not allow on trial/free-credit subscriptions (including Azure for Students); trial numbers are US-only and calling-only, and Malaysia isn't served by ACS alphanumeric sender IDs. The `PickupNotifier` port is channel-agnostic, so an `SmsNotifier` (e.g. Twilio) plugs in later without touching the domain or services.
+
 ## Requirements coverage
 
 | Requirement (spec) | Where |
@@ -149,7 +182,7 @@ Reservation is **atomic at the repository boundary**: `findAndReserve` selects a
 3. **Package size is a category** (S/M/L) matching locker sizes, not physical dimensions.
 4. **Storage is in-memory** per the challenge scope; state resets on restart.
 5. **No authentication** — the spec defines roles but no auth requirements; tabs model the roles at the presentation level.
-6. **Notification of the pickup code** (SMS/email) is explicitly out of scope per the spec.
+6. **Notification of the pickup code** is out of scope per the spec, but implemented as a bonus: email via ACS when configured, console otherwise (see **Email notifications**).
 
 ## Trade-offs & what I'd do with more time
 
