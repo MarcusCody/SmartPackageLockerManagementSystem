@@ -1,7 +1,13 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
+import { LockOpen } from 'lucide-react';
 import type { PickupResult } from '../api/client';
 import { ApiError } from '../api/client';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Alert, AlertTitle } from '@/components/ui/alert';
 
 interface CustomerViewProps {
   onRetrieve: (pickupCode: string, lockerId?: string) => Promise<PickupResult>;
@@ -49,57 +55,72 @@ export function CustomerView({ onRetrieve }: CustomerViewProps) {
   }
 
   return (
-    <section aria-labelledby="customer-heading">
-      <h2 id="customer-heading">Collect your package</h2>
-      <form onSubmit={handleSubmit} className="panel form-grid">
-        <label htmlFor="pickup-code">Pickup code</label>
-        <input
-          id="pickup-code"
-          value={pickupCode}
-          onChange={(event) => setPickupCode(event.target.value)}
-          placeholder="6-digit PIN"
-          inputMode="numeric"
-          autoComplete="off"
-          required
-        />
-        <label htmlFor="locker-id">Locker ID (optional)</label>
-        <input
-          id="locker-id"
-          value={lockerId}
-          onChange={(event) => setLockerId(event.target.value)}
-          placeholder="e.g. S-1"
-          autoComplete="off"
-        />
-        <button type="submit" disabled={busy}>
-          Open locker
-        </button>
-      </form>
+    <section aria-labelledby="customer-heading" className="space-y-4">
+      <h2 id="customer-heading" className="text-lg font-semibold">
+        Collect your package
+      </h2>
+      <Card className="max-w-md">
+        <CardHeader>
+          <CardTitle className="text-base">Enter your pickup PIN</CardTitle>
+          <CardDescription>The PIN from your email is all you need.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="pickup-code">Pickup code</Label>
+              <Input
+                id="pickup-code"
+                value={pickupCode}
+                onChange={(event) => setPickupCode(event.target.value)}
+                placeholder="6-digit PIN"
+                inputMode="numeric"
+                autoComplete="off"
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="locker-id">Locker ID (optional)</Label>
+              <Input
+                id="locker-id"
+                value={lockerId}
+                onChange={(event) => setLockerId(event.target.value)}
+                placeholder="e.g. S-1"
+                autoComplete="off"
+              />
+            </div>
+            <Button type="submit" disabled={busy}>
+              <LockOpen className="size-4" aria-hidden="true" />
+              Open locker
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
       {result && (
-        <div className="panel result-panel" role="status">
-          <h3>
+        <Alert role="status" variant="success" className="max-w-md">
+          <AlertTitle>
             Locker {result.lockerId} is open — collect your package{' '}
             <span aria-hidden="true">📦</span>
-          </h3>
-          <p>
+          </AlertTitle>
+          <p className="mb-1">
             Storage charge:{' '}
-            <strong className="highlight">
+            <strong>
               {result.storageCharge === 0
                 ? 'Free — collected within the grace period'
                 : `RM${result.storageCharge}`}
             </strong>
           </p>
-          <p className="hint">
+          <p className="text-green-800/80">
             Stored {new Date(result.storedAt).toLocaleString()} · Collected{' '}
             {new Date(result.retrievedAt).toLocaleString()}
           </p>
-        </div>
+        </Alert>
       )}
 
       {error && (
-        <p className="panel error-panel" role="alert">
+        <Alert variant="destructive" className="max-w-md">
           {error}
-        </p>
+        </Alert>
       )}
     </section>
   );

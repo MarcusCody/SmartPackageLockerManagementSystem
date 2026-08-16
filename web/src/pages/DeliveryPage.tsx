@@ -64,8 +64,10 @@ export function DeliveryPage() {
     <>
       <AgentView orders={orders} onStoreOrder={storeOrder} />
       <ReturnsView overdue={overdue} onReturn={returnToWarehouse} />
-      <section aria-labelledby="board-heading">
-        <h2 id="board-heading">Locker status</h2>
+      <section aria-labelledby="board-heading" className="mt-8 space-y-4">
+        <h2 id="board-heading" className="text-lg font-semibold">
+          Locker status
+        </h2>
         <LockerBoard lockers={lockers} />
       </section>
     </>

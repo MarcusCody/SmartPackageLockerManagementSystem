@@ -1,8 +1,13 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
+import { PlusCircle, Send, Sparkles } from 'lucide-react';
 import type { AdminLockerView, LockerSize, LockerView, OrderView } from '../api/client';
 import { ApiError } from '../api/client';
 import { AdminLockerBoard } from '../components/AdminLockerBoard';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
+import { Alert } from '@/components/ui/alert';
 
 interface OperationsViewProps {
   lockers: AdminLockerView[];
@@ -17,6 +22,9 @@ const SIZE_LABEL: Record<LockerSize, string> = {
   MEDIUM: 'Medium',
   LARGE: 'Large',
 };
+
+const selectClass =
+  'h-9 rounded-md border border-input bg-card px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
 /** Internal station-operator flow: dispatch platform orders, add lockers, watch capacity. */
 export function OperationsView({
@@ -86,15 +94,24 @@ export function OperationsView({
   }
 
   return (
-    <section aria-labelledby="operations-heading">
-      <h2 id="operations-heading">Station operations</h2>
-      <p className="hint">
-        {lockers.length} lockers · {available} available · {lockers.length - available} occupied
-      </p>
-      <form onSubmit={handleSubmit} className="panel form-row">
-        <label htmlFor="locker-size">New locker size</label>
+    <section aria-labelledby="operations-heading" className="space-y-4">
+      <div>
+        <h2 id="operations-heading" className="text-lg font-semibold">
+          Station operations
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          {lockers.length} lockers · {available} available · {lockers.length - available} occupied
+        </p>
+      </div>
+
+      <form
+        onSubmit={handleSubmit}
+        className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-4 shadow-sm"
+      >
+        <Label htmlFor="locker-size">New locker size</Label>
         <select
           id="locker-size"
+          className={selectClass}
           value={size}
           onChange={(event) => setSize(event.target.value as LockerSize)}
         >
@@ -102,72 +119,81 @@ export function OperationsView({
           <option value="MEDIUM">Medium</option>
           <option value="LARGE">Large</option>
         </select>
-        <button type="submit" disabled={busy}>
+        <Button type="submit" disabled={busy}>
+          <PlusCircle className="size-4" aria-hidden="true" />
           Add locker
-        </button>
+        </Button>
       </form>
       {message && (
-        <p className="panel result-panel" role="status">
+        <Alert role="status" variant="success">
           {message}
-        </p>
+        </Alert>
       )}
-      {error && (
-        <p className="panel error-panel" role="alert">
-          {error}
-        </p>
-      )}
+      {error && <Alert variant="destructive">{error}</Alert>}
 
-      <h3 className="board-heading">Incoming from platform</h3>
-      <p className="hint">
-        Orders registered by the e-commerce platform, waiting to be dispatched to this station.
-        The platform only accepts orders the station can absorb (free lockers minus undelivered
-        orders, size-aware).
-      </p>
-      <p>
-        <button type="button" onClick={() => void mockOrder()} disabled={busy}>
-          Mock incoming order
-        </button>
-      </p>
-      {incoming.length === 0 ? (
-        <p className="board-empty">No incoming orders from the platform right now.</p>
-      ) : (
-        <ul className="order-list" aria-label="Incoming orders">
-          {incoming.map((order) => (
-            <li key={order.id} className="panel order-row">
-              <div className="order-info">
-                <div>
-                  <strong>{order.id}</strong>{' '}
-                  <span className="order-size">{SIZE_LABEL[order.size]}</span>
-                </div>
-                <div className="order-contact">
-                  {order.customerName} · {order.customerEmail} · {order.customerPhone}
-                </div>
-              </div>
-              <button
-                type="button"
-                aria-label={`Dispatch order ${order.id} to this station`}
-                onClick={() => void dispatchOrder(order.id)}
-                disabled={busy}
+      <div className="pt-4">
+        <h3 className="font-semibold">Incoming from platform</h3>
+        <p className="mb-3 text-sm text-muted-foreground">
+          Orders registered by the e-commerce platform, waiting to be dispatched to this station.
+          The platform only accepts orders the station can absorb (free lockers minus undelivered
+          orders, size-aware).
+        </p>
+        <p className="mb-3">
+          <Button type="button" variant="secondary" onClick={() => void mockOrder()} disabled={busy}>
+            <Sparkles className="size-4" aria-hidden="true" />
+            Mock incoming order
+          </Button>
+        </p>
+        {incoming.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No incoming orders from the platform right now.
+          </p>
+        ) : (
+          <ul className="m-0 flex list-none flex-col gap-3 p-0" aria-label="Incoming orders">
+            {incoming.map((order) => (
+              <li
+                key={order.id}
+                className="flex flex-wrap items-center justify-between gap-4 rounded-xl border bg-card p-4 shadow-sm"
               >
-                Dispatch to station
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      {dispatchMessage && (
-        <p className="panel result-panel" role="status">
-          {dispatchMessage}
-        </p>
-      )}
-      {dispatchError && (
-        <p className="panel error-panel" role="alert">
-          {dispatchError}
-        </p>
-      )}
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <strong className="font-semibold">{order.id}</strong>
+                    <Badge variant="secondary">{SIZE_LABEL[order.size]}</Badge>
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    {order.customerName} · {order.customerEmail} · {order.customerPhone}
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  aria-label={`Dispatch order ${order.id} to this station`}
+                  onClick={() => void dispatchOrder(order.id)}
+                  disabled={busy}
+                >
+                  <Send className="size-4" aria-hidden="true" />
+                  Dispatch to station
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {dispatchMessage && (
+          <Alert role="status" variant="success" className="mt-3">
+            {dispatchMessage}
+          </Alert>
+        )}
+        {dispatchError && (
+          <Alert variant="destructive" className="mt-3">
+            {dispatchError}
+          </Alert>
+        )}
+      </div>
 
-      <h3 className="board-heading">Locker overview</h3>
-      <AdminLockerBoard lockers={lockers} />
+      <div className="pt-4">
+        <h3 className="mb-3 font-semibold">Locker overview</h3>
+        <AdminLockerBoard lockers={lockers} />
+      </div>
     </section>
   );
 }

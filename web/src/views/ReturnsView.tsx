@@ -1,6 +1,10 @@
 import { useState } from 'react';
+import { Undo2 } from 'lucide-react';
 import type { OverdueView, ReturnResult } from '../api/client';
 import { ApiError } from '../api/client';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Alert } from '@/components/ui/alert';
 
 interface ReturnsViewProps {
   overdue: OverdueView[];
@@ -40,18 +44,23 @@ export function ReturnsView({ overdue, onReturn }: ReturnsViewProps) {
   }
 
   return (
-    <section aria-labelledby="returns-heading">
-      <h2 id="returns-heading">Overdue — return to warehouse</h2>
+    <section aria-labelledby="returns-heading" className="mt-8 space-y-4">
+      <h2 id="returns-heading" className="text-lg font-semibold">
+        Overdue — return to warehouse
+      </h2>
       {overdue.length > 0 && (
-        <ul className="order-list" aria-label="Overdue packages">
+        <ul className="m-0 flex list-none flex-col gap-3 p-0" aria-label="Overdue packages">
           {overdue.map((entry) => (
-            <li key={entry.lockerId} className="panel order-row">
-              <div className="order-info">
-                <div>
-                  <strong>{entry.lockerId}</strong>{' '}
-                  <span className="order-size">{entry.size.toLowerCase()}</span>
+            <li
+              key={entry.lockerId}
+              className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm"
+            >
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <strong className="font-semibold">{entry.lockerId}</strong>
+                  <Badge variant="muted">{entry.size.toLowerCase()}</Badge>
                 </div>
-                <div className="order-contact">
+                <div className="text-sm text-muted-foreground">
                   {entry.daysInLocker} days in locker · stored{' '}
                   {new Date(entry.storedAt).toLocaleDateString()}
                   {entry.customerName === null
@@ -59,28 +68,26 @@ export function ReturnsView({ overdue, onReturn }: ReturnsViewProps) {
                     : ` · ${entry.customerName} (${entry.orderId})`}
                 </div>
               </div>
-              <button
+              <Button
                 type="button"
+                variant="outline"
                 aria-label={`Return locker ${entry.lockerId} package to warehouse`}
                 onClick={() => void returnPackage(entry.lockerId)}
                 disabled={busy}
               >
+                <Undo2 className="size-4" aria-hidden="true" />
                 Return to warehouse
-              </button>
+              </Button>
             </li>
           ))}
         </ul>
       )}
       {message && (
-        <p className="panel result-panel" role="status">
+        <Alert role="status" variant="success">
           {message}
-        </p>
+        </Alert>
       )}
-      {error && (
-        <p className="panel error-panel" role="alert">
-          {error}
-        </p>
-      )}
+      {error && <Alert variant="destructive">{error}</Alert>}
     </section>
   );
 }

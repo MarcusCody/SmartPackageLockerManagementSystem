@@ -1,6 +1,10 @@
 import { useState } from 'react';
+import { PackagePlus } from 'lucide-react';
 import type { OrderView, StoreOrderResult } from '../api/client';
 import { ApiError } from '../api/client';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Alert, AlertTitle } from '@/components/ui/alert';
 
 interface AgentViewProps {
   orders: OrderView[];
@@ -44,66 +48,76 @@ export function AgentView({ orders, onStoreOrder }: AgentViewProps) {
   }
 
   return (
-    <section aria-labelledby="agent-heading">
-      <h2 id="agent-heading">Pending deliveries</h2>
+    <section aria-labelledby="agent-heading" className="space-y-4">
+      <h2 id="agent-heading" className="text-lg font-semibold">
+        Pending deliveries
+      </h2>
       {orders.length === 0 ? (
-        <p className="board-empty">
+        <p className="text-sm text-muted-foreground">
           No pending orders — register one in the Operations tab to simulate the platform.
         </p>
       ) : (
-        <ul className="order-list" aria-label="Pending orders">
+        <ul className="m-0 flex list-none flex-col gap-3 p-0" aria-label="Pending orders">
           {orders.map((order) => (
-            <li key={order.id} className="panel order-row">
-              <div className="order-info">
-                <div>
-                  <strong>{order.id}</strong>{' '}
-                  <span className="order-size">{SIZE_LABEL[order.size]}</span>
+            <li
+              key={order.id}
+              className="flex flex-wrap items-center justify-between gap-4 rounded-xl border bg-card p-4 shadow-sm"
+            >
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <strong className="font-semibold">{order.id}</strong>
+                  <Badge variant="secondary">{SIZE_LABEL[order.size]}</Badge>
                 </div>
-                <div className="order-contact">
+                <div className="text-sm text-muted-foreground">
                   {order.customerName} · {order.customerEmail} · {order.customerPhone}
                 </div>
               </div>
-              <button
+              <Button
                 type="button"
                 aria-label={`Store order ${order.id}`}
                 onClick={() => void storeOrder(order.id)}
                 disabled={busy}
               >
+                <PackagePlus className="size-4" aria-hidden="true" />
                 Store
-              </button>
+              </Button>
             </li>
           ))}
         </ul>
       )}
 
       {result && (
-        <div className="panel result-panel" role="status">
-          <h3>Package stored — order {result.order.id}</h3>
-          <p>
-            Locker <strong className="highlight">{result.lockerId}</strong>
+        <Alert role="status" variant="success">
+          <AlertTitle>Package stored — order {result.order.id}</AlertTitle>
+          <p className="mb-1">
+            Locker <strong className="text-base">{result.lockerId}</strong>
           </p>
-          <p>
-            Pickup code <code className="highlight">{result.pickupCode}</code>{' '}
-            <button type="button" onClick={() => void copyCode(result.pickupCode)}>
+          <p className="mb-1 flex items-center gap-2">
+            Pickup code{' '}
+            <code className="rounded-md border border-green-200 bg-white px-2 py-0.5 text-base font-bold tracking-widest">
+              {result.pickupCode}
+            </code>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void copyCode(result.pickupCode)}
+            >
               {copied ? 'Copied!' : 'Copy code'}
-            </button>
+            </Button>
           </p>
           {result.notification === 'sent' && (
-            <p className="hint">PIN sent to {result.order.customerEmail}.</p>
+            <p className="text-green-800/80">PIN sent to {result.order.customerEmail}.</p>
           )}
           {result.notification === 'failed' && (
-            <p className="hint">
+            <p className="text-green-800/80">
               The email could not be sent — share the PIN with the customer manually.
             </p>
           )}
-        </div>
+        </Alert>
       )}
 
-      {error && (
-        <p className="panel error-panel" role="alert">
-          {error}
-        </p>
-      )}
+      {error && <Alert variant="destructive">{error}</Alert>}
     </section>
   );
 }
