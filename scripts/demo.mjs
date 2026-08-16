@@ -25,6 +25,13 @@ try {
 
   show('Operations: add a MEDIUM locker', await call('POST', '/api/lockers', { size: 'MEDIUM' }));
 
+  show('Agent: the pending-order queue (seeded from the platform)', await call('GET', '/api/orders'));
+
+  show(
+    "Agent: store order ORD-1001 — locker assigned by the order's size, PIN emailed to its contact",
+    await call('POST', '/api/orders/ORD-1001/store'),
+  );
+
   const stored = await call('POST', '/api/packages', {
     size: 'SMALL',
     customerEmail: 'customer@example.com',

@@ -4,7 +4,7 @@ A locker station where **delivery agents store packages** and **customers retrie
 
 - **Server:** TypeScript (strict), Node 20, Express 5, zod — domain-driven, dependency-injected, in-memory storage behind a repository port
 - **UI:** React 19 + Vite + react-router — a thin client with a route per role (`/delivery`, `/customer`, `/operation`) over the REST API
-- **Tests:** Vitest — 98 tests: domain and application units, supertest API integration, concurrency race/stress tests, and React Testing Library flows
+- **Tests:** Vitest — 115 tests: domain and application units, supertest API integration, concurrency race/stress tests, and React Testing Library flows
 
 ## Quick start
 
@@ -33,7 +33,7 @@ Configuration: `PORT` (3000) and `SEED_LOCKERS` (`SMALL:3,MEDIUM:3,LARGE:2`) via
 
 ## How it works
 
-Delivery agent stores a package → the system assigns the **smallest available locker that fits** and returns the locker id + a unique 6-digit pickup PIN (assumed to reach the customer via SMS/email, out of scope). Customer enters the PIN → the system finds and opens the right locker (PINs are unique among active packages, so the locker id is optional — when provided, the pair is validated), the package is released, the **storage charge** is returned, and the locker becomes available again.
+**Orders** arrive from the e-commerce platform with the customer's name, email and phone attached — the delivery agent picks a pending order to store, never typing contact details. The system assigns the **smallest available locker that fits** the order's package, generates a unique 6-digit pickup PIN, and **emails it to the order's contact**. Customer enters the PIN → the system finds and opens the right locker (PINs are unique among active packages, so the locker id is optional — when provided, the pair is validated), the package is released, the **storage charge** is returned, and the locker becomes available again.
 
 ## Architecture
 
@@ -44,19 +44,23 @@ server/src/
 │   ├── Locker.ts            # invariants: one package at a time, only if it fits;
 │   │                        #   retrieve validates the code and frees the locker
 │   ├── Package.ts
+│   ├── Order.ts             # pending delivery with the customer contact attached
 │   └── errors.ts            # typed DomainErrors with stable codes
 ├── application/       # use cases + policies, everything injected
 │   ├── StorePackageService.ts
+│   ├── StoreOrderService.ts             # store a pending order (composes the above)
 │   ├── RetrievePackageService.ts
 │   ├── LockerOverviewService.ts         # operations: PINs + accrued charges
 │   ├── LockerFactory.ts     # human-friendly sequential ids: S-1, M-2, ...
+│   ├── OrderFactory.ts      # ORD-1001, ORD-1002, ... (stands in for platform ids)
 │   ├── pickupEmail.ts       # pure, tested email content builder
-│   ├── ports.ts             # Clock, PickupCodeGenerator, PickupNotifier, LockerRepository
+│   ├── ports.ts             # Clock, PickupCodeGenerator, PickupNotifier, Locker/OrderRepository
 │   └── policies/
 │       ├── LockerAllocationStrategy.ts  # SmallestSuitableLockerStrategy
 │       └── StorageFeePolicy.ts          # TieredStorageFeePolicy
 ├── infrastructure/    # adapters for the ports
 │   ├── InMemoryLockerRepository.ts      # incl. atomic findAndReserve (Level 4)
+│   ├── InMemoryOrderRepository.ts
 │   ├── RandomPickupCodeGenerator.ts     # keypad-friendly 6-digit PINs
 │   ├── SystemClock.ts
 │   └── notifications/
@@ -92,6 +96,9 @@ There is deliberately **no DI container and no ORM** — constructor injection a
 | `GET /api/lockers`   | —                          | `200 {lockers: [{id, size, available}]}`                        | —                                          |
 | `POST /api/lockers`  | `{size}`                   | `201 {locker}`                                                  | `400` invalid size                         |
 | `GET /api/admin/lockers` | —                      | `200` — adds `pickupCode`, `storedAt`, `accruedCharge` per occupied locker | — (internal: would sit behind operator auth in production) |
+| `GET /api/orders`    | —                          | `200 {orders}` — the pending delivery queue                     | —                                          |
+| `POST /api/orders`   | `{customerName, customerEmail, customerPhone, size}` | `201 {order}` — simulates the upstream platform | `400` validation                |
+| `POST /api/orders/:id/store` | —                  | `201 {lockerId, pickupCode, packageId, notification, order}`    | `404` unknown order · `409` already stored / no suitable locker |
 | `POST /api/packages` | `{size, customerEmail?}`   | `201 {lockerId, pickupCode, packageId, notification}`           | `400` invalid size/email · `409` no suitable locker |
 | `POST /api/pickups`  | `{pickupCode, lockerId?}`  | `200 {opened, lockerId, package, storedAt, retrievedAt, storageCharge}` | `400` missing PIN · `404` unknown locker · `422` unmatched/wrong PIN, empty locker |
 
@@ -101,9 +108,9 @@ All errors share one shape: `{"error": {"code": "NO_SUITABLE_LOCKER", "message":
 
 One route per role (no authentication — roles are presentation-level, see assumptions):
 
-- **`/delivery`** — choose a package size, store it, get the locker id + pickup PIN with a copy button. Shows the availability board so the agent can see capacity.
+- **`/delivery`** — the agent's **pending-order queue**: each order arrives with the customer's name, email and phone, so the agent never types contact details. Storing an order assigns the locker, emails the PIN, and confirms who was notified (with a copy button for the PIN). Shows the availability board so the agent can see capacity.
 - **`/customer`** — enter the 6-digit PIN (locker id optional); the system opens the right locker, names it, and shows the storage charge; failures get friendly, specific copy. **No locker board here** — which lockers exist or are occupied is not the customer's business.
-- **`/operation`** (internal) — add lockers, see capacity counts, a **station wall preview** (cabinet columns of doors sized by locker size, occupied doors showing a parcel), and the locker overview where each occupied locker shows its **pickup PIN, storage time and the charge accrued so far**. Locker creation belongs to the station operator, not the delivery agent, so it lives here.
+- **`/operation`** (internal) — add lockers, **register incoming orders** (simulating the e-commerce platform), see capacity counts, a **station wall preview** (cabinet columns of doors sized by locker size, occupied doors showing a parcel), and the locker overview where each occupied locker shows its **pickup PIN, storage time and the charge accrued so far**. Locker creation belongs to the station operator, not the delivery agent, so it lives here.
 
 Accessibility: labelled controls, keyboard-operable forms, `alert`/`status` live regions, visible focus outlines.
 
@@ -131,7 +138,7 @@ Reservation is **atomic at the repository boundary**: `findAndReserve` selects a
 
 ## Email notifications
 
-When the delivery agent provides an optional customer email, the pickup PIN is emailed via the `PickupNotifier` port. Two adapters exist:
+When an order is stored (or a `customerEmail` is passed to the raw `POST /api/packages` endpoint), the pickup PIN is emailed via the `PickupNotifier` port. The order's phone number is stored and displayed, reserved for a future SMS channel through the same port. Two adapters exist:
 
 - **`ConsoleNotifier`** (default) — renders the email to the server console, so the repo runs and demos with zero external dependencies or secrets.
 - **`AcsEmailNotifier`** — sends real email through **Azure Communication Services**, selected automatically when both env vars are set:
@@ -183,6 +190,7 @@ EMAIL_SENDER_ADDRESS="DoNotReply@<guid>.azurecomm.net"
 4. **Storage is in-memory** per the challenge scope; state resets on restart.
 5. **No authentication** — the spec defines roles but no auth requirements; tabs model the roles at the presentation level.
 6. **Notification of the pickup code** is out of scope per the spec, but implemented as a bonus: email via ACS when configured, console otherwise (see **Email notifications**).
+7. **Orders** model the upstream e-commerce platform: they arrive with the customer contact attached (name, email, phone), which is why the delivery agent never types contact details. `POST /api/orders` and the Operations form stand in for that platform integration; `POST /api/packages` remains as the spec's direct store-by-size flow.
 
 ## Trade-offs & what I'd do with more time
 
