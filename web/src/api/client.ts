@@ -21,6 +21,32 @@ export interface StoreResult {
   notification: 'sent' | 'failed' | 'none';
 }
 
+/** A pending delivery from the e-commerce platform — contact details come with it. */
+export interface OrderView {
+  id: string;
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  size: LockerSize;
+}
+
+export interface NewOrder {
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  size: LockerSize;
+}
+
+export interface StoreOrderResult extends StoreResult {
+  order: {
+    id: string;
+    customerName: string;
+    customerEmail: string;
+    customerPhone: string;
+    packageSize: LockerSize;
+  };
+}
+
 export interface PickupResult {
   opened: boolean;
   /** Which locker opened — the customer may have collected by PIN alone. */
@@ -85,6 +111,25 @@ export const api = {
       body: JSON.stringify(
         customerEmail === undefined ? { size } : { size, customerEmail },
       ),
+    });
+  },
+
+  async listOrders(): Promise<OrderView[]> {
+    const { orders } = await requestJson<{ orders: OrderView[] }>('/api/orders');
+    return orders;
+  },
+
+  async createOrder(order: NewOrder): Promise<OrderView> {
+    const { order: created } = await requestJson<{ order: OrderView }>('/api/orders', {
+      method: 'POST',
+      body: JSON.stringify(order),
+    });
+    return created;
+  },
+
+  storeOrder(orderId: string): Promise<StoreOrderResult> {
+    return requestJson<StoreOrderResult>(`/api/orders/${encodeURIComponent(orderId)}/store`, {
+      method: 'POST',
     });
   },
 

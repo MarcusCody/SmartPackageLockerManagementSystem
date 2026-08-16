@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api/client';
-import type { AdminLockerView, LockerSize } from '../api/client';
+import type { AdminLockerView, LockerSize, NewOrder } from '../api/client';
 import { OperationsView } from '../views/OperationsView';
 
 /** /operation — internal station management with PINs and accrued charges. */
@@ -27,5 +27,7 @@ export function OperationPage() {
     }
   }, []);
 
-  return <OperationsView lockers={lockers} onCreate={createLocker} />;
+  const createOrder = useCallback((order: NewOrder) => api.createOrder(order), []);
+
+  return <OperationsView lockers={lockers} onCreate={createLocker} onCreateOrder={createOrder} />;
 }

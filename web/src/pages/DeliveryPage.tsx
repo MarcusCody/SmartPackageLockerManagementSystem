@@ -1,18 +1,20 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api/client';
-import type { LockerSize, LockerView } from '../api/client';
+import type { LockerView, OrderView } from '../api/client';
 import { AgentView } from '../views/AgentView';
 import { LockerBoard } from '../components/LockerBoard';
 
-/** /delivery — the delivery agent stores packages and sees availability. */
+/** /delivery — the agent works the pending-order queue and sees availability. */
 export function DeliveryPage() {
   const [lockers, setLockers] = useState<LockerView[]>([]);
+  const [orders, setOrders] = useState<OrderView[]>([]);
 
   useEffect(() => {
     let cancelled = false;
-    void api.listLockers().then((initial) => {
+    void Promise.all([api.listLockers(), api.listOrders()]).then(([initialLockers, initialOrders]) => {
       if (!cancelled) {
-        setLockers(initial);
+        setLockers(initialLockers);
+        setOrders(initialOrders);
       }
     });
     return () => {
@@ -20,17 +22,19 @@ export function DeliveryPage() {
     };
   }, []);
 
-  const storePackage = useCallback(async (size: LockerSize, customerEmail?: string) => {
+  const storeOrder = useCallback(async (orderId: string) => {
     try {
-      return await api.storePackage(size, customerEmail);
+      return await api.storeOrder(orderId);
     } finally {
-      setLockers(await api.listLockers());
+      const [freshLockers, freshOrders] = await Promise.all([api.listLockers(), api.listOrders()]);
+      setLockers(freshLockers);
+      setOrders(freshOrders);
     }
   }, []);
 
   return (
     <>
-      <AgentView onStore={storePackage} />
+      <AgentView orders={orders} onStoreOrder={storeOrder} />
       <section aria-labelledby="board-heading">
         <h2 id="board-heading">Locker status</h2>
         <LockerBoard lockers={lockers} />
