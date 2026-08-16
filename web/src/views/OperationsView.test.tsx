@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { OperationsView } from './OperationsView';
 import type { AdminLockerView } from '../api/client';
 
@@ -32,7 +32,15 @@ describe('OperationsView', () => {
   it('shows no PIN on available lockers and summarises capacity', () => {
     render(<OperationsView lockers={lockers} onCreate={vi.fn()} />);
 
-    expect(screen.getAllByText(/pin/i)).toHaveLength(1);
+    const overview = screen.getByRole('list', { name: /locker overview/i });
+    expect(within(overview).getAllByText(/pin/i)).toHaveLength(1);
     expect(screen.getByText(/2 lockers · 1 available · 1 occupied/i)).toBeInTheDocument();
+  });
+
+  it('renders the station wall preview alongside the overview', () => {
+    render(<OperationsView lockers={lockers} onCreate={vi.fn()} />);
+
+    expect(screen.getByRole('img', { name: /locker s-1, small, occupied/i })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: /locker s-2, small, available/i })).toBeInTheDocument();
   });
 });
