@@ -17,6 +17,19 @@ async function repositoryWith(lockers: Locker[]): Promise<InMemoryLockerReposito
   return repository;
 }
 
+describe('InMemoryLockerRepository.findByActivePickupCode', () => {
+  it('returns the locker currently holding the code, and undefined otherwise', async () => {
+    const occupied = new Locker('S-1', 'SMALL');
+    occupied.store(makePackage('pkg-1'), '123456', NOW);
+    const repository = await repositoryWith([occupied, new Locker('S-2', 'SMALL')]);
+
+    const found = await repository.findByActivePickupCode('123456');
+    expect(found?.id).toBe('S-1');
+
+    expect(await repository.findByActivePickupCode('654321')).toBeUndefined();
+  });
+});
+
 describe('InMemoryLockerRepository.findAndReserve', () => {
   it('reserves the strategy-selected locker and stores the package in it', async () => {
     const repository = await repositoryWith([new Locker('L-1', 'LARGE'), new Locker('S-1', 'SMALL')]);

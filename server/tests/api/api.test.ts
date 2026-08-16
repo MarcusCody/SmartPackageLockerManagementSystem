@@ -137,6 +137,36 @@ describe('REST API', () => {
       expect(lockers.body.lockers).toEqual([{ id: 'S-1', size: 'SMALL', available: true }]);
     });
 
+    it('opens the right locker from the PIN alone — locker id is optional', async () => {
+      const { app } = await buildTestApp([new Locker('S-1', 'SMALL'), new Locker('S-2', 'SMALL')]);
+      await request(app).post('/api/packages').send({ size: 'SMALL' });
+      const second = await request(app).post('/api/packages').send({ size: 'SMALL' });
+
+      const response = await request(app)
+        .post('/api/pickups')
+        .send({ pickupCode: second.body.pickupCode });
+
+      expect(response.status).toBe(200);
+      expect(response.body.opened).toBe(true);
+      expect(response.body.lockerId).toBe('S-2');
+      expect(response.body.package.id).toBe(second.body.packageId);
+
+      const board = await request(app).get('/api/lockers');
+      expect(board.body.lockers).toEqual([
+        { id: 'S-1', size: 'SMALL', available: false },
+        { id: 'S-2', size: 'SMALL', available: true },
+      ]);
+    });
+
+    it('returns 422 for a PIN that matches no stored package', async () => {
+      const { app } = await buildTestApp([new Locker('S-1', 'SMALL')]);
+
+      const response = await request(app).post('/api/pickups').send({ pickupCode: '000000' });
+
+      expect(response.status).toBe(422);
+      expect(response.body.error.code).toBe('INVALID_PICKUP_CODE');
+    });
+
     it('returns 404 for an unknown locker', async () => {
       const { app } = await buildTestApp();
 
